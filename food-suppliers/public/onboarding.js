@@ -1,4 +1,4 @@
-import { escapeHtml } from "./dom.js";
+import { escapeHtml } from "./ui.js";
 
 const STORAGE_PREFIX = "foodsource_quicksetup_";
 

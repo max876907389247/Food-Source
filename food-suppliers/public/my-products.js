@@ -1,5 +1,5 @@
 import { api } from "./auth.js";
-import { escapeHtml } from "./dom.js";
+import { escapeHtml } from "./ui.js";
 
 function renderProductRow(p, categories) {
   const cat = categories.find((c) => c.id === p.categoryId);

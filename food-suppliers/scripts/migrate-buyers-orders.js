@@ -140,7 +140,7 @@ async function run() {
     console.log("  + таблица order_items");
   }
 
-  const sqlPath = path.join(__dirname, "../sql/05-buyers-orders.sql");
+  const sqlPath = path.join(__dirname, "../sql/data-updates.sql");
   const sql = fs.readFileSync(sqlPath, "utf8");
   const statements = sql
     .split(";")
@@ -151,24 +151,6 @@ async function run() {
     if (stmt) await conn.query(stmt);
   }
   console.log("  цены и демо-заявки покупателей обновлены");
-
-  if (!(await columnExists(conn, "users", "supplier_id"))) {
-    const linksSql = fs.readFileSync(
-      path.join(__dirname, "../sql/09-user-account-links.sql"),
-      "utf8"
-    );
-    await conn.query(linksSql);
-    console.log("  + users.supplier_id, buyer_demands.user_id");
-  }
-
-  if (!(await tableExists(conn, "supply_proposals"))) {
-    const proposalsSql = fs.readFileSync(
-      path.join(__dirname, "../sql/08-supply-proposals.sql"),
-      "utf8"
-    );
-    await conn.query(proposalsSql);
-    console.log("  + таблица supply_proposals");
-  }
 
   const [[{ c }]] = await conn.query("SELECT COUNT(*) AS c FROM buyer_demands");
   console.log(`Готово. Заявок покупателей в БД: ${c}`);

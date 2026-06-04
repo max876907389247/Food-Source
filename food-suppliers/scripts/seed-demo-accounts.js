@@ -1,11 +1,6 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import mysql from "mysql2/promise";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEMO_PASSWORD = "demo";
 
 const config = {
@@ -23,15 +18,6 @@ function sellerUsername(supplierId) {
 
 function buyerUsername(demandId) {
   return `b_${demandId}`;
-}
-
-async function columnExists(conn, table, column) {
-  const [rows] = await conn.query(
-    `SELECT 1 FROM information_schema.COLUMNS
-     WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
-    [config.database, table, column]
-  );
-  return rows.length > 0;
 }
 
 async function upsertUser(conn, hash, row) {
@@ -66,12 +52,6 @@ async function upsertUser(conn, hash, row) {
 async function run() {
   const conn = await mysql.createConnection(config);
   console.log("Демо-аккаунты поставщиков и покупателей…");
-
-  if (!(await columnExists(conn, "users", "supplier_id"))) {
-    const sql = fs.readFileSync(path.join(__dirname, "../sql/09-user-account-links.sql"), "utf8");
-    await conn.query(sql);
-    console.log("  + users.supplier_id, buyer_demands.user_id");
-  }
 
   const hash = await bcrypt.hash(DEMO_PASSWORD, 10);
   const [suppliers] = await conn.query(

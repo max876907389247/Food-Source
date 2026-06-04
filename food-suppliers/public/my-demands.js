@@ -1,5 +1,5 @@
 import { api } from "./auth.js";
-import { escapeHtml } from "./dom.js";
+import { escapeHtml } from "./ui.js";
 
 function renderDemandRow(d) {
   const status = d.isActive ? '<span class="badge badge--ok">Активен</span>' : '<span class="badge badge--muted">Снят</span>';

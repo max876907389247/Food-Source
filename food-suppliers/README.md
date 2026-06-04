@@ -188,12 +188,15 @@ GET /api/suppliers?category=ingredients&region=Екатеринбург&budgetKg
 
 ## Файлы
 
+В репозитории **~60 исходных файлов** (без `node_modules` и `.env`). Папку `node_modules` в git не добавляйте — после `npm install` там тысячи файлов.
+
 ```
 food-suppliers/
-├── sql/schema.sql      # схема БД
-├── sql/seed.sql        # демо-данные
-├── server/             # API
-├── public/             # интерфейс
+├── sql/schema.sql        # схема БД
+├── sql/seed.sql          # демо-данные
+├── sql/data-updates.sql  # цены и заявки покупателей
+├── server/               # API
+├── public/               # интерфейс
 ├── package.json
 └── .env.example
 ```

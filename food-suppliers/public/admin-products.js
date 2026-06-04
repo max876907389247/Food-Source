@@ -1,5 +1,5 @@
 import { api } from "./auth.js";
-import { escapeHtml } from "./dom.js";
+import { escapeHtml } from "./ui.js";
 
 function productFormHtml(categories, product = null) {
   const catOptions = categories

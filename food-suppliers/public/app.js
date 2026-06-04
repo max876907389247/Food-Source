@@ -5,9 +5,8 @@ import {
   promptBuyerAuth,
 } from "./audience.js";
 import { initMyDemands } from "./my-demands.js";
-import { closeAllPanels, openPanel } from "./modal.js";
 import { maybeShowQuickSetup } from "./onboarding.js";
-import { escapeHtml } from "./dom.js";
+import { closeAllPanels, escapeHtml, openPanel } from "./ui.js";
 
 const MAX_COMPARE = 3;
 

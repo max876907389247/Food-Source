@@ -1,9 +1,9 @@
 import { api } from "./auth.js";
-import { closeAllPanels, openPanel } from "./modal.js";
+import { closeAllPanels, openPanel } from "./ui.js";
 import { maybeShowQuickSetup } from "./onboarding.js";
 import { isSellerAccount, promptSellerAuth } from "./audience.js";
 import { initMyProducts } from "./my-products.js";
-import { escapeHtml } from "./dom.js";
+import { escapeHtml } from "./ui.js";
 
 const sellerState = {
   category: "",
@@ -96,7 +96,7 @@ async function renderBuyerProposals() {
       if (emptyTitle) emptyTitle.textContent = "Предложений не найдено";
       if (emptyText) {
         emptyText.textContent =
-          "Измените фильтры или обновите базу (sql/05-buyers-orders.sql).";
+          "Измените фильтры или обновите базу (npm run db:migrate).";
       }
       return;
     }

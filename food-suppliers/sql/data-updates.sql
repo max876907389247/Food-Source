@@ -1,55 +1,6 @@
 USE foodsource;
 SET NAMES utf8mb4;
 
--- Таблицы для новых установок (CREATE IF NOT EXISTS)
-CREATE TABLE IF NOT EXISTS buyer_demands (
-  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  company_name VARCHAR(200) NOT NULL,
-  city VARCHAR(120) NOT NULL,
-  region VARCHAR(120) NOT NULL,
-  business_type VARCHAR(120) NOT NULL,
-  category_id VARCHAR(32) NULL,
-  volume_text VARCHAR(120) NOT NULL,
-  volume_kg INT UNSIGNED NULL,
-  budget_text VARCHAR(120) NULL,
-  description TEXT NOT NULL,
-  contact_phone VARCHAR(40) NOT NULL,
-  contact_email VARCHAR(120) NOT NULL,
-  is_active TINYINT(1) NOT NULL DEFAULT 1,
-  created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS orders (
-  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  user_id INT UNSIGNED NOT NULL,
-  supplier_id VARCHAR(64) NOT NULL,
-  status ENUM('pending', 'confirmed', 'cancelled') NOT NULL DEFAULT 'pending',
-  total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0,
-  note TEXT NULL,
-  created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE,
-  INDEX idx_orders_user (user_id),
-  INDEX idx_orders_supplier (supplier_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS order_items (
-  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  order_id INT UNSIGNED NOT NULL,
-  product_id INT UNSIGNED NULL,
-  product_name VARCHAR(200) NOT NULL,
-  unit VARCHAR(40) NOT NULL DEFAULT 'шт.',
-  quantity DECIMAL(10, 2) NOT NULL,
-  unit_price DECIMAL(10, 2) NOT NULL,
-  line_total DECIMAL(12, 2) NOT NULL,
-  PRIMARY KEY (id),
-  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
-  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 UPDATE products SET price_per_unit = COALESCE(price_per_unit, 42) WHERE supplier_id = 'agrorus' AND name LIKE 'Мука пшеничная%';
 UPDATE products SET price_per_unit = COALESCE(price_per_unit, 420) WHERE supplier_id = 'msk-spices';
 UPDATE products SET price_per_unit = COALESCE(price_per_unit, 38) WHERE supplier_id = 'uralgrain';

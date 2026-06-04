@@ -1,6 +1,6 @@
 import { api, initAuth, isAdmin, loadSession, auth } from "./auth.js";
 import { hideAdminSupplierProducts, initAdminSupplierProducts } from "./admin-products.js";
-import { escapeHtml } from "./dom.js";
+import { escapeHtml } from "./ui.js";
 
 const suppliersTbody = document.getElementById("suppliers-tbody");
 const buyersTbody = document.getElementById("buyers-tbody");
