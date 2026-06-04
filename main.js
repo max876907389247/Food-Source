@@ -3,44 +3,42 @@ const navList = document.querySelector(".nav__list");
 const navLinks = document.querySelectorAll(".nav__list a");
 
 if (navToggle && navList) {
+  const closeNav = () => {
+    navList.classList.remove("is-open");
+    navToggle.setAttribute("aria-expanded", "false");
+  };
+
   navToggle.addEventListener("click", () => {
     const isOpen = navList.classList.toggle("is-open");
     navToggle.setAttribute("aria-expanded", String(isOpen));
   });
 
-  navLinks.forEach((link) => {
-    link.addEventListener("click", () => {
-      navList.classList.remove("is-open");
-      navToggle.setAttribute("aria-expanded", "false");
-    });
-  });
+  navLinks.forEach((link) => link.addEventListener("click", closeNav));
 
   document.addEventListener("click", (event) => {
     if (!navToggle.contains(event.target) && !navList.contains(event.target)) {
-      navList.classList.remove("is-open");
-      navToggle.setAttribute("aria-expanded", "false");
+      closeNav();
     }
   });
 }
 
-const sections = document.querySelectorAll("section[id]");
 const navAnchors = document.querySelectorAll('.nav__list a[href^="#"]');
+const navSections = document.querySelectorAll("section[id]");
 
-const observer = new IntersectionObserver(
+const navObserver = new IntersectionObserver(
   (entries) => {
     entries.forEach((entry) => {
       if (!entry.isIntersecting) return;
 
       navAnchors.forEach((anchor) => {
-        const href = anchor.getAttribute("href");
-        anchor.classList.toggle("is-active", href === `#${entry.target.id}`);
+        anchor.classList.toggle("is-active", anchor.getAttribute("href") === `#${entry.target.id}`);
       });
     });
   },
   { rootMargin: "-40% 0px -55% 0px", threshold: 0 }
 );
 
-sections.forEach((section) => observer.observe(section));
+navSections.forEach((section) => navObserver.observe(section));
 
 const revealSections = document.querySelectorAll(".section");
 revealSections.forEach((section) => section.classList.add("reveal"));
@@ -48,10 +46,10 @@ revealSections.forEach((section) => section.classList.add("reveal"));
 const revealObserver = new IntersectionObserver(
   (entries) => {
     entries.forEach((entry) => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add("is-visible");
-        revealObserver.unobserve(entry.target);
-      }
+      if (!entry.isIntersecting) return;
+
+      entry.target.classList.add("is-visible");
+      revealObserver.unobserve(entry.target);
     });
   },
   { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }

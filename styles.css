@@ -1,31 +1,15 @@
 :root {
-  /* Палитра с фото Maks.jpg */
   --charcoal: #1a1a1b;
   --cream: #f5f2ed;
   --brick: #944e3d;
   --sand: #c5a880;
-  --grey-soft: #e2e2e2;
   --white: #ffffff;
-
-  /* Совместимость с существующими стилями */
-  --beige-50: #242425;
-  --beige-100: var(--charcoal);
-  --beige-200: #2c2c2e;
-  --beige-300: #3a3532;
-  --beige-400: var(--sand);
-  --beige-500: var(--brick);
-  --beige-600: #b8654f;
-  --beige-700: var(--sand);
-  --beige-800: var(--cream);
-  --brown-soft: var(--brick);
-  --brown-deep: #7b3f32;
-
   --charcoal-deep: #121213;
-  --surface: #242425;
+  --surface-muted: #2c2c2e;
   --brick-light: #b8654f;
+  --brick-dark: #7b3f32;
 
   --bg: var(--charcoal);
-  --bg-muted: #202021;
   --bg-card: rgba(245, 242, 237, 0.06);
 
   --text: var(--cream);
@@ -47,18 +31,6 @@
   --mono: "JetBrains Mono", ui-monospace, monospace;
   --transition-fast: 0.2s ease;
   --transition-smooth: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(24px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 @keyframes markerPulse {
@@ -180,16 +152,6 @@ p {
   align-items: center;
   justify-content: space-between;
   min-height: 4rem;
-}
-
-.logo {
-  font-weight: 700;
-  font-size: 1.25rem;
-  letter-spacing: -0.03em;
-}
-
-.logo__dot {
-  color: var(--accent);
 }
 
 .nav {
@@ -323,23 +285,23 @@ p {
 }
 
 .btn--primary {
-  background: var(--brown-soft);
+  background: var(--accent);
   color: var(--white);
 }
 
 .btn--primary:hover {
-  background: var(--brown-deep);
+  background: var(--brick-dark);
   color: var(--white);
   box-shadow: 0 8px 24px var(--accent-glow);
 }
 
 .btn--ghost {
   border-color: var(--border-accent);
-  color: var(--beige-800);
+  color: var(--cream);
 }
 
 .btn--ghost:hover {
-  border-color: var(--brown-soft);
+  border-color: var(--accent);
   background: rgba(148, 78, 61, 0.25);
   color: var(--sand);
 }
@@ -442,7 +404,7 @@ p {
 }
 
 .section--muted {
-  background: var(--beige-200);
+  background: var(--surface-muted);
   border-block: 1px solid var(--border);
 }
 
@@ -514,55 +476,6 @@ p {
   color: var(--text);
 }
 
-/* Skills */
-
-.skills-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1.25rem;
-}
-
-.skill-group {
-  padding: 1.25rem;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  transition: border-color var(--transition-smooth), background var(--transition-smooth);
-}
-
-.skill-group:hover {
-  border-color: var(--border-accent);
-  background: linear-gradient(160deg, rgba(245, 242, 237, 0.08), rgba(148, 78, 61, 0.16));
-}
-
-.skill-group h3 {
-  font-size: 0.9375rem;
-  margin-bottom: 1rem;
-  color: var(--accent);
-}
-
-.tag-list {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.tag-list li {
-  font-size: 0.8125rem;
-  padding: 0.35rem 0.65rem;
-  border-radius: 999px;
-  background: var(--beige-200);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  transition: border-color var(--transition-fast), color var(--transition-fast);
-}
-
-.tag-list li:hover {
-  border-color: var(--border-accent);
-  color: var(--text);
-}
-
 /* Projects */
 
 .project-card {
@@ -609,7 +522,7 @@ p {
   position: relative;
   overflow: hidden;
   border: 1px solid var(--border);
-  background: var(--beige-200);
+  background: var(--surface-muted);
 }
 
 .project-card--reverse .project-card__body {
@@ -631,30 +544,6 @@ p {
 
 .project-card:hover .project-card__visual img {
   transform: scale(1.03);
-}
-
-.project-card__visual--one {
-  background:
-    linear-gradient(135deg, rgba(148, 78, 61, 0.4), transparent 55%),
-    linear-gradient(180deg, var(--brick), var(--charcoal-deep));
-}
-
-.project-card__visual--two {
-  background:
-    linear-gradient(135deg, rgba(148, 135, 120, 0.2), transparent 55%),
-    linear-gradient(180deg, var(--beige-400), var(--beige-300));
-}
-
-.project-card__visual--three {
-  background:
-    linear-gradient(135deg, rgba(148, 78, 61, 0.5), transparent 55%),
-    linear-gradient(180deg, var(--sand), var(--brick));
-}
-
-.project-card__visual--four {
-  background:
-    linear-gradient(135deg, rgba(226, 226, 226, 0.08), transparent 55%),
-    linear-gradient(180deg, var(--brick-light), var(--brick));
 }
 
 .about-block {
@@ -685,7 +574,7 @@ p {
   border-radius: var(--radius);
   overflow: hidden;
   border: 1px solid var(--border-accent);
-  background: var(--beige-200);
+  background: var(--surface-muted);
 }
 
 .about-slider__slide {
@@ -723,7 +612,7 @@ p {
   border-radius: 50%;
   border: 1px solid var(--border-accent);
   background: var(--bg-card);
-  color: var(--beige-700);
+  color: var(--sand);
   font-size: 1rem;
   cursor: pointer;
   transition:
@@ -733,9 +622,9 @@ p {
 }
 
 .about-slider__btn:hover {
-  background: var(--beige-200);
+  background: var(--surface-muted);
   border-color: var(--accent);
-  color: var(--brown-deep);
+  color: var(--brick-dark);
 }
 
 .about-slider__dots {
@@ -749,7 +638,7 @@ p {
   padding: 0;
   border: none;
   border-radius: 50%;
-  background: var(--beige-400);
+  background: var(--sand);
   cursor: pointer;
   transition: background var(--transition-fast), transform var(--transition-fast);
 }
@@ -775,7 +664,7 @@ p {
   aspect-ratio: auto;
   padding: 0;
   overflow: hidden;
-  background: var(--beige-200);
+  background: var(--surface-muted);
 }
 
 .about-slider--project {
@@ -850,27 +739,6 @@ p {
   margin: 0;
   font-size: 0.9375rem;
   color: var(--text-muted);
-}
-
-.project-card__links {
-  display: flex;
-  gap: 1rem;
-}
-
-.project-card__links a {
-  font-weight: 600;
-  font-size: 0.9375rem;
-  color: var(--accent);
-  transition: color var(--transition-fast);
-}
-
-.project-card__links a:hover {
-  color: var(--accent-strong);
-}
-
-.project-card__links a[aria-disabled="true"] {
-  opacity: 0.45;
-  pointer-events: none;
 }
 
 /* Timeline */
@@ -1014,8 +882,7 @@ p {
 
 @media (max-width: 900px) {
   .hero__grid,
-  .fit-grid,
-  .skills-grid {
+  .fit-grid {
     grid-template-columns: 1fr;
     direction: ltr;
   }
@@ -1034,10 +901,6 @@ p {
   .project-card__visual,
   .project-card--reverse .project-card__visual {
     order: 2;
-  }
-
-  .skills-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .nav__toggle {
@@ -1089,10 +952,6 @@ p {
 @media (max-width: 600px) {
   .hero {
     padding-top: 3rem;
-  }
-
-  .skills-grid {
-    grid-template-columns: 1fr;
   }
 
   .contact__columns {

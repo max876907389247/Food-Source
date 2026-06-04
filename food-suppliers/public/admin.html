@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ru" class="admin-page" data-theme="admin">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Админ-панель — FoodSource</title>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="admin-theme.css">
+</head>
+<body class="admin-page">
+  <header class="header">
+    <div class="container header__inner">
+      <a class="brand" href="./">Food<strong>Source</strong></a>
+      <span class="admin-badge">Администрирование БД</span>
+      <div class="auth-bar" id="auth-bar"></div>
+      <a class="btn btn--sm btn--to-catalog" href="./">← К каталогу</a>
+    </div>
+  </header>
+
+  <main class="container admin-main">
+    <nav class="admin-tabs" aria-label="Разделы админки">
+      <button type="button" class="admin-tabs__btn is-active" data-section="suppliers">Поставщики</button>
+      <button type="button" class="admin-tabs__btn" data-section="buyers">Покупатели (заявки)</button>
+      <button type="button" class="admin-tabs__btn" data-section="users">Пользователи</button>
+    </nav>
+
+    <p class="admin-hint" id="admin-hint" hidden>Войдите как <strong>admin1</strong> / <strong>admin2</strong></p>
+    <p class="admin-hint admin-hint--creds" id="admin-creds-hint" hidden>
+      Демо-входы: поставщики <code>s_&lt;id&gt;</code>, покупатели <code>b_1</code>…<code>b_12</code>, пароль <code>demo</code>.
+      Создать аккаунты: <code>npm run db:seed-accounts</code>
+    </p>
+
+    <section id="section-suppliers" class="admin-section">
+      <div class="admin-toolbar">
+        <h1>Поставщики в MySQL</h1>
+        <button type="button" class="btn btn--primary" id="btn-add-supplier">+ Добавить поставщика</button>
+      </div>
+      <form class="search-card admin-filters" id="suppliers-filter-form" aria-label="Фильтр поставщиков">
+        <div class="search-card__grid">
+          <label class="field">
+            <span class="field__label">Категория товара</span>
+            <select id="filter-supplier-category" name="category">
+              <option value="">Все категории</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field__label">Город или регион</span>
+            <select id="filter-supplier-region" name="region">
+              <option value="">Любой регион</option>
+            </select>
+          </label>
+          <label class="field field--wide">
+            <span class="field__label">Поиск (название, ID, город)</span>
+            <input type="search" id="filter-supplier-query" name="q" placeholder="АгроРус, москва…" autocomplete="off">
+          </label>
+          <label class="field">
+            <span class="field__label">Сертификаты</span>
+            <select id="filter-supplier-certs" name="certs">
+              <option value="">Все</option>
+              <option value="yes">Есть сертификаты</option>
+              <option value="no">Без сертификатов</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field__label">Сортировка</span>
+            <select id="filter-supplier-sort" name="sort">
+              <option value="name">По названию</option>
+              <option value="rating">По рейтингу</option>
+              <option value="city">По городу</option>
+              <option value="minOrder">По мин. заказу</option>
+            </select>
+          </label>
+        </div>
+        <div class="search-card__actions">
+          <button type="submit" class="btn btn--primary">Найти</button>
+          <button type="button" class="btn btn--ghost" id="reset-suppliers-filter">Сбросить</button>
+        </div>
+      </form>
+      <p class="admin-results-meta" id="suppliers-filter-meta"></p>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Название</th>
+              <th>Город</th>
+              <th>Рейтинг</th>
+              <th>Мин. заказ</th>
+              <th>Серт.</th>
+              <th>Товаров</th>
+              <th>Логин</th>
+              <th>Пароль</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="suppliers-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="section-buyers" class="admin-section" hidden>
+      <div class="admin-toolbar">
+        <h1>Заявки покупателей (buyer_demands)</h1>
+      </div>
+      <p class="admin-results-meta" id="buyers-meta"></p>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Компания</th>
+              <th>Город</th>
+              <th>Регион</th>
+              <th>Тип</th>
+              <th>Категория</th>
+              <th>Объём</th>
+              <th>Контакты</th>
+              <th>Логин</th>
+              <th>Пароль</th>
+            </tr>
+          </thead>
+          <tbody id="buyers-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="section-users" class="admin-section" hidden>
+      <div class="admin-toolbar">
+        <h1>Пользователи в MySQL</h1>
+        <button type="button" class="btn btn--primary" id="btn-add-user">+ Добавить пользователя</button>
+      </div>
+      <form class="search-card admin-filters" id="users-filter-form" aria-label="Фильтр пользователей">
+        <div class="search-card__grid">
+          <label class="field field--wide">
+            <span class="field__label">Поиск по логину</span>
+            <input type="search" id="filter-user-query" name="q" placeholder="admin1, b_1…" autocomplete="off">
+          </label>
+          <label class="field">
+            <span class="field__label">Роль</span>
+            <select id="filter-user-role" name="role">
+              <option value="">Все роли</option>
+              <option value="admin">Администратор</option>
+              <option value="user">Пользователь</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field__label">Тип аккаунта</span>
+            <select id="filter-user-audience" name="audience">
+              <option value="">Все типы</option>
+              <option value="buyer">Покупатель</option>
+              <option value="seller">Поставщик</option>
+              <option value="viewer">Наблюдатель</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field__label">Сортировка</span>
+            <select id="filter-user-sort" name="sort">
+              <option value="username">По логину</option>
+              <option value="role">По роли</option>
+              <option value="createdAt">По дате регистрации</option>
+            </select>
+          </label>
+        </div>
+        <div class="search-card__actions">
+          <button type="submit" class="btn btn--primary">Найти</button>
+          <button type="button" class="btn btn--ghost" id="reset-users-filter">Сбросить</button>
+        </div>
+      </form>
+      <p class="admin-results-meta" id="users-filter-meta"></p>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Логин</th>
+              <th>Пароль</th>
+              <th>Тип</th>
+              <th>Организация</th>
+              <th>Город / регион</th>
+              <th>Контакты</th>
+              <th>Роль</th>
+              <th>Дата</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div class="overlay" id="supplier-modal" hidden>
+    <div class="panel panel--wide panel--admin" role="dialog">
+      <header class="panel__head">
+        <h2 id="supplier-form-title">Поставщик</h2>
+        <button type="button" class="panel__close" data-close>×</button>
+      </header>
+      <form class="panel__body admin-form" id="supplier-form">
+        <input type="hidden" name="editMode" id="supplier-edit-mode" value="0">
+        <div class="admin-form__grid">
+          <label class="field">
+            <span class="field__label">ID (латиница)</span>
+            <input name="id" id="field-id" required pattern="[a-z0-9_-]+">
+          </label>
+          <label class="field">
+            <span class="field__label">Название</span>
+            <input name="name" required>
+          </label>
+          <label class="field">
+            <span class="field__label">Город</span>
+            <input name="city" required>
+          </label>
+          <label class="field">
+            <span class="field__label">Рейтинг</span>
+            <input name="rating" type="number" min="0" max="5" step="0.1" value="4">
+          </label>
+          <label class="field">
+            <span class="field__label">Отзывов</span>
+            <input name="reviewsCount" type="number" min="0" value="0">
+          </label>
+          <label class="field">
+            <span class="field__label">Мин. заказ (текст)</span>
+            <input name="minOrder" required>
+          </label>
+          <label class="field">
+            <span class="field__label">Мин. заказ (кг)</span>
+            <input name="minOrderKg" type="number" min="0">
+          </label>
+          <label class="field">
+            <span class="field__label">Цена (подсказка)</span>
+            <input name="priceHint">
+          </label>
+          <label class="field">
+            <span class="field__label">Телефон</span>
+            <input name="phone" required>
+          </label>
+          <label class="field">
+            <span class="field__label">Email</span>
+            <input name="email" type="email" required>
+          </label>
+          <label class="field">
+            <span class="field__label">Сайт</span>
+            <input name="website" type="url">
+          </label>
+          <label class="field">
+            <span class="field__label">Срок ответа на запрос</span>
+            <select name="responseTime" id="field-response-time" required>
+              <option value="">Выберите…</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field__label">Начало работы (МСК)</span>
+            <select name="workHoursFrom" id="field-work-from" required></select>
+          </label>
+          <label class="field">
+            <span class="field__label">Окончание работы (МСК)</span>
+            <select name="workHoursTo" id="field-work-to" required></select>
+          </label>
+          <label class="field field--wide">
+            <span class="field__label">Описание</span>
+            <textarea name="description" rows="3" required></textarea>
+          </label>
+          <label class="field field--wide">
+            <span class="field__label">Доставка</span>
+            <textarea name="delivery" rows="2" required></textarea>
+          </label>
+          <label class="field field--wide">
+            <span class="field__label">Источник данных</span>
+            <input name="source" required>
+          </label>
+          <div class="field field--wide">
+            <span class="field__label">Категории</span>
+            <p class="field__hint">Отметьте все подходящие категории товаров</p>
+            <div class="multi-check-list" id="field-categories" role="group" aria-label="Категории"></div>
+          </div>
+          <div class="field field--wide">
+            <span class="field__label">Регионы поставки</span>
+            <p class="field__hint">Отметьте регионы, в которые поставщик доставляет</p>
+            <div class="multi-check-list" id="field-regions" role="group" aria-label="Регионы"></div>
+          </div>
+          <div class="field field--wide admin-products-block" id="supplier-products-block" hidden>
+            <span class="field__label">Товары</span>
+            <p class="admin-results-meta" id="admin-products-meta"></p>
+            <div class="admin-table-wrap admin-table-wrap--nested">
+              <table class="admin-table admin-table--compact">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Название</th>
+                    <th>Категория</th>
+                    <th>Цена</th>
+                    <th>Ед.</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="admin-products-tbody"></tbody>
+              </table>
+            </div>
+            <div class="manage-form-wrap" id="admin-product-form-wrap"></div>
+          </div>
+          <div class="field field--wide field--certs">
+            <span class="field__label">Сертификаты</span>
+            <label class="cert-flag">
+              <input type="checkbox" name="hasCertificates" id="field-certs">
+              <span>У поставщика есть подтверждённые сертификаты</span>
+            </label>
+            <p class="field__hint">Названия сертификатов — по одному на строку</p>
+            <textarea
+              name="certificatesText"
+              id="field-certificates-text"
+              rows="3"
+              placeholder="ISO 22000&#10;Халяль"
+            ></textarea>
+          </div>
+        </div>
+        <p class="auth-error" id="supplier-form-error" hidden></p>
+        <footer class="panel__foot">
+          <button type="submit" class="btn btn--primary">Сохранить</button>
+          <button type="button" class="btn btn--ghost" data-close>Отмена</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <div class="overlay" id="user-modal" hidden>
+    <div class="panel panel--auth" role="dialog">
+      <header class="panel__head">
+        <h2 id="user-form-title">Пользователь</h2>
+        <button type="button" class="panel__close" data-close-user>×</button>
+      </header>
+      <form class="panel__body admin-form" id="user-form">
+        <input type="hidden" id="user-edit-id" value="">
+        <label class="field">
+          <span class="field__label">Логин</span>
+          <input name="username" id="user-username" required pattern="[a-zA-Z0-9_]{3,32}">
+        </label>
+        <label class="field">
+          <span class="field__label">Пароль</span>
+          <input name="password" id="user-password" type="password" minlength="4" placeholder="Оставьте пустым при редактировании">
+        </label>
+        <label class="field">
+          <span class="field__label">Роль</span>
+          <select name="role" id="user-role">
+            <option value="user">Пользователь</option>
+            <option value="admin">Администратор</option>
+          </select>
+        </label>
+        <p class="auth-error" id="user-form-error" hidden></p>
+        <footer class="panel__foot">
+          <button type="submit" class="btn btn--primary">Сохранить в БД</button>
+          <button type="button" class="btn btn--ghost" data-close-user>Отмена</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <script type="module" src="admin.js"></script>
+</body>
+</html>

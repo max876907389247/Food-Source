@@ -1,0 +1,30 @@
+{
+  "name": "foodsource",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Поиск поставщиков продуктов питания с данными из MySQL",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && docker compose up -d",
+    "db:wait": "node scripts/wait-for-mysql.js",
+    "db:check": "node scripts/check-db.js",
+    "db:migrate": "node scripts/migrate-buyers-orders.js",
+    "db:seed-accounts": "node scripts/seed-demo-accounts.js",
+    "setup": "docker compose up -d && node scripts/wait-for-mysql.js && node scripts/migrate-buyers-orders.js && node scripts/check-db.js && node scripts/seed-users.js && node scripts/seed-demo-accounts.js",
+    "stop": "lsof -ti :3000 | xargs kill 2>/dev/null || true",
+    "db:reload": "docker compose down -v && docker compose up -d && node scripts/wait-for-mysql.js && node scripts/migrate-buyers-orders.js && node scripts/seed-users.js",
+    "db:fix-encoding": "docker compose down -v && docker compose up -d && node scripts/wait-for-mysql.js",
+    "db:init": "mysql -u root -p < sql/schema.sql && mysql -u root -p foodsource < sql/seed.sql"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "mysql2": "^3.12.0"
+  }
+}

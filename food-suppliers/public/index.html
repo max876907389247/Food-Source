@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="FoodSource — поиск поставщиков продуктов питания. Данные из MySQL.">
+  <title>FoodSource — поставщики из MySQL</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">К содержанию</a>
+
+  <header class="header">
+    <div class="container header__inner">
+      <div class="header__left">
+        <a class="brand" href="./">
+          <span class="brand__icon" aria-hidden="true">🌾</span>
+          <span class="brand__text">Food<strong>Source</strong></span>
+        </a>
+        <span class="audience-badge" id="audience-badge">Каталог поставщиков</span>
+      </div>
+      <div class="header__right">
+        <nav class="view-tabs view-tabs--header" id="header-nav" hidden aria-label="Покупатель">
+          <button type="button" class="view-tabs__btn is-active" data-view="list" id="buyer-tab-catalog">Каталог</button>
+          <button type="button" class="view-tabs__btn" data-view="orders" id="buyer-tab-orders" hidden>Мои заказы</button>
+          <button type="button" class="view-tabs__btn" data-view="demands" id="buyer-tab-demands" hidden>Мои запросы</button>
+        </nav>
+        <nav class="view-tabs view-tabs--header" id="seller-header-nav" hidden aria-label="Поставщик">
+          <button type="button" class="view-tabs__btn is-active" data-seller-view="proposals" id="seller-tab-proposals" hidden>Предложения</button>
+          <button type="button" class="view-tabs__btn" data-seller-view="products" id="seller-tab-products" hidden>Мои товары</button>
+        </nav>
+        <div class="auth-bar" id="auth-bar"></div>
+      </div>
+    </div>
+  </header>
+
+  <div id="buyer-app">
+  <main id="main">
+    <section class="hero">
+      <div class="container hero__grid">
+        <div class="hero__copy">
+          <h1>Найдите поставщика продуктов под ваш бизнес</h1>
+          <p>
+            FoodSource создан для ресторанов, кафе, магазинов и отделов закупок: в одном месте
+            можно подобрать оптового поставщика по категории и региону, сравнить до трёх компаний
+            по цене, минимальному заказу и сертификатам — и выбрать партнёра под ваш объём и сроки.
+          </p>
+        </div>
+        <form class="search-card" id="search-form" aria-label="Поиск поставщиков">
+          <div class="search-card__grid">
+            <label class="field">
+              <span class="field__label">Категория товара</span>
+              <select id="filter-category" name="category">
+                <option value="">Все категории</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field__label">Город или регион</span>
+              <select id="filter-region" name="region">
+                <option value="">Любой регион</option>
+              </select>
+            </label>
+            <label class="field field--wide">
+              <span class="field__label">Поиск (поставщик или продукция)</span>
+              <input type="search" id="filter-query" name="q" placeholder="мука, лосось, упаковка" autocomplete="off">
+            </label>
+            <label class="field">
+              <span class="field__label">Желаемый объём (кг)</span>
+              <input type="number" id="filter-budget" name="budget" min="1" placeholder="100">
+            </label>
+            <label class="field">
+              <span class="field__label">Сортировка</span>
+              <select id="filter-sort" name="sort">
+                <option value="score">По релевантности</option>
+                <option value="rating">По рейтингу</option>
+                <option value="minOrder">По мин. заказу</option>
+                <option value="name">По названию</option>
+              </select>
+            </label>
+          </div>
+          <div class="search-card__actions">
+            <button type="submit" class="btn btn--primary">Найти</button>
+            <button type="button" class="btn btn--ghost" id="reset-filters">Сбросить</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="content" id="buyer-catalog-section">
+      <div class="container content__grid">
+        <aside class="sidebar">
+          <div class="sidebar-card" id="recommendation-card">
+            <p class="sidebar-card__hint">Загрузка…</p>
+          </div>
+        </aside>
+
+        <div class="results-area">
+          <p class="results-meta" id="results-meta">Загрузка…</p>
+          <div class="state state--loading" id="loading-state">Загрузка из базы данных…</div>
+          <div class="state state--error" id="error-state" hidden>
+            <h2>Ошибка</h2>
+            <p></p>
+          </div>
+          <div class="results" id="results" role="list"></div>
+          <div class="empty" id="empty-state" hidden>
+            <h2>Ничего не найдено</h2>
+            <p>Измените фильтры или проверьте, что в БД есть данные (sql/seed.sql).</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="content" id="buyer-demands-panel" hidden>
+      <div class="container">
+        <h2 class="section-title">Мои запросы на поставку</h2>
+        <p class="results-meta" id="buyer-demands-meta">Загрузка…</p>
+        <div class="state state--error" id="buyer-demands-error" hidden><h2>Ошибка</h2><p></p></div>
+        <div class="results results--demands-manage" id="buyer-demands-list"></div>
+        <div class="manage-form-wrap" id="buyer-demand-form-wrap"></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="compare-bar" id="compare-bar" hidden>
+    <div class="container compare-bar__inner">
+      <span class="compare-bar__label">Сравнение:</span>
+      <div class="compare-bar__chips" id="compare-list"></div>
+      <button type="button" class="btn btn--primary btn--sm" id="compare-go" disabled>Сравнить</button>
+      <button type="button" class="btn btn--ghost btn--sm" id="compare-clear">Очистить</button>
+    </div>
+  </div>
+  </div>
+
+  <div id="seller-app" hidden>
+    <div id="seller-proposals-wrap">
+    <main class="hero">
+      <div class="container hero__grid">
+        <div class="hero__copy">
+          <h1>Предложения от покупателей</h1>
+          <p>
+            Заявки ресторанов, магазинов и отделов закупок на поставку продуктов.
+            Отфильтруйте по региону и категории, откройте карточку и ответьте своим предложением.
+          </p>
+        </div>
+        <form class="search-card" id="seller-search-form" aria-label="Поиск покупателей">
+          <div class="search-card__grid">
+            <label class="field">
+              <span class="field__label">Категория закупки</span>
+              <select id="seller-filter-category" name="category">
+                <option value="">Все категории</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field__label">Регион покупателя</span>
+              <select id="seller-filter-region" name="region">
+                <option value="">Любой регион</option>
+              </select>
+            </label>
+            <label class="field field--wide">
+              <span class="field__label">Поиск (компания, описание)</span>
+              <input type="search" id="seller-filter-query" name="q" placeholder="кафе, ритейл, мука…" autocomplete="off">
+            </label>
+            <label class="field">
+              <span class="field__label">Сортировка</span>
+              <select id="seller-filter-sort" name="sort">
+                <option value="relevance">Сначала новые</option>
+                <option value="volume">По объёму</option>
+                <option value="name">По названию</option>
+              </select>
+            </label>
+          </div>
+          <div class="search-card__actions">
+            <button type="submit" class="btn btn--primary">Найти предложения</button>
+            <button type="button" class="btn btn--ghost" id="reset-seller-filters">Сбросить</button>
+          </div>
+        </form>
+      </div>
+    </main>
+    <section class="content">
+      <div class="container">
+        <p class="results-meta" id="seller-results-meta">Загрузка…</p>
+        <div class="state state--loading" id="seller-loading">Загрузка предложений…</div>
+        <div class="state state--error" id="seller-error" hidden><h2>Ошибка</h2><p></p></div>
+        <div class="results results--buyers" id="seller-results" role="list"></div>
+        <div class="empty" id="seller-empty" hidden>
+          <h2>Предложений не найдено</h2>
+          <p>Измените фильтры или обновите базу (sql/05-buyers-orders.sql).</p>
+        </div>
+      </div>
+    </section>
+    </div>
+    <section class="content" id="seller-products-section" hidden>
+      <div class="container">
+        <h2 class="section-title">Мои товары</h2>
+        <p class="section-lead">Добавленные позиции видны покупателям в карточке вашего поставщика в каталоге и при оформлении заказа.</p>
+        <p class="results-meta" id="seller-products-meta">Загрузка…</p>
+        <div class="state state--error" id="seller-products-error" hidden><h2>Ошибка</h2><p></p></div>
+        <div class="results results--products-manage" id="seller-products-list"></div>
+        <div class="manage-form-wrap" id="seller-product-form-wrap"></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="overlay" id="overlay" hidden>
+    <div class="panel" id="panel-detail" role="dialog" aria-modal="true" hidden></div>
+    <div class="panel" id="panel-deal" role="dialog" aria-modal="true" hidden></div>
+    <div class="panel panel--wide" id="panel-compare" role="dialog" aria-modal="true" hidden></div>
+    <div class="panel" id="panel-orders" role="dialog" aria-modal="true" hidden></div>
+    <div class="panel" id="panel-seller-detail" role="dialog" aria-modal="true" hidden></div>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>

@@ -1,1 +1,5 @@
 .DS_Store
+node_modules/
+.env
+food-suppliers/node_modules/
+food-suppliers/.env

@@ -1,0 +1,63 @@
+/**
+ * Тема админ-панели (только admin.html).
+ * Подключается после styles.css — переопределяет зелёный акцент каталога.
+ */
+html[data-theme="admin"],
+html.admin-page,
+body.admin-page {
+  --accent: #2563eb;
+  --accent-light: #dbeafe;
+  --accent-hover: #1d4ed8;
+  --accent-rgb: 37, 99, 235;
+}
+
+body.admin-page .header {
+  background: linear-gradient(180deg, var(--accent-light) 0%, var(--bg-card) 85%);
+  border-bottom-color: rgba(var(--accent-rgb), 0.18);
+}
+
+body.admin-page .brand strong,
+body.admin-page .db-status--ok {
+  color: var(--accent);
+}
+
+body.admin-page .db-status--ok {
+  background: var(--accent-light);
+}
+
+body.admin-page .btn--primary {
+  background: var(--accent);
+}
+
+body.admin-page .btn--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+body.admin-page .admin-tabs__btn.is-active,
+body.admin-page .search-card:focus-within {
+  border-color: rgba(var(--accent-rgb), 0.35);
+}
+
+body.admin-page .search-card:focus-within {
+  box-shadow: 0 16px 48px rgba(var(--accent-rgb), 0.12);
+}
+
+body.admin-page .field input:focus,
+body.admin-page .field select:focus,
+body.admin-page .field textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.18);
+}
+
+/* Каталог покупателя — зелёная кнопка на синей админке */
+a.btn--to-catalog {
+  background: #d8f3dc;
+  border-color: #2d6a4f;
+  color: #2d6a4f;
+}
+
+a.btn--to-catalog:hover {
+  background: #2d6a4f;
+  border-color: #2d6a4f;
+  color: #fff;
+}
