@@ -1,61 +1,17 @@
-# Frontend Portfolio Landing
+# FoodSource
 
-Статический лендинг-портфолио под вакансию **Frontend-разработчик**. Структура заточена под оценку релевантности опыта, а не просто перечисление навыков.
+Сервис поиска и сравнения поставщиков продуктов питания (B2B).
 
-## Структура подачи
-
-1. **Hero** — позиционирование и краткий профиль под вакансию
-2. **Соответствие роли** — «требование → опыт → результат»
-3. **Проекты** — задача, роль, стек, релевантность для frontend
-4. **Опыт** — хронология с акцентом на frontend-задачи
-5. **Контакты**
-
-## Быстрый просмотр
-
-Откройте `index.html` в браузере или запустите локальный сервер:
-
-```bash
-cd ~/Projects/frontend-portfolio
-python3 -m http.server 8080
-```
-
-Откройте: http://localhost:8080
-
-## Что заменить перед сдачей
-
-| Место | Файл |
-|-------|------|
-| Имя, город, headline | `index.html` → секция `.hero` |
-| Блок «Почему подхожу» | `index.html` → `#fit` (подставьте пункты из текста вакансии) |
-| Проекты и ссылки | `index.html` → `#projects` |
-| Опыт | `index.html` → `#experience` |
-| Email, Telegram, GitHub | `index.html` → `#contact` |
-
-## Деплой на GitHub Pages
-
-1. Создайте репозиторий на GitHub
-2. Загрузите содержимое папки
-3. Settings → Pages → Source: **Deploy from branch** → `main` / `/ (root)`
-
-Ссылка будет вида: `https://<username>.github.io/<repo>/`
-
-## Тестовое задание: FoodSource
-
-Прототип сервиса поиска поставщиков продуктов питания — папка [`food-suppliers/`](food-suppliers/README.md).
-
-Команды `npm` для БД и сервера — **из папки `food-suppliers`** (там лежит `package.json` проекта). Из корня репозитория тоже можно: `npm run db:reload` (скрипты проксируются в `food-suppliers`).
+## Запуск
 
 ```bash
 cd food-suppliers
-cp .env.example .env
-npm install
-npm run setup    # Docker: MySQL + данные (нужен Docker Desktop)
-npm start        # http://localhost:3000
+npm run setup   # первый раз: Docker + MySQL + сиды
+npm start
 ```
 
-## Файлы
+- Каталог: http://localhost:3000  
+- Админка: http://localhost:3000/admin.html  
+- Демо: `admin1` / `admin2`, поставщики `s_<id>` / `demo`, покупатели `b_<id>` / `demo`
 
-- `index.html` — разметка и контент
-- `styles.css` — стили, адаптив, тёмная тема
-- `main.js` — мобильное меню и подсветка секций
-- `food-suppliers/` — прототип FoodSource (отдельное SPA)
+Подробная документация: [food-suppliers/README.md](food-suppliers/README.md)

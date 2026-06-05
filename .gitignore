@@ -4,3 +4,10 @@ node_modules/
 .env
 food-suppliers/node_modules/
 food-suppliers/.env
+
+# Локальное портфолио (не публикуем на GitHub)
+/index.html
+/main.js
+/styles.css
+/package.json
+/images/
