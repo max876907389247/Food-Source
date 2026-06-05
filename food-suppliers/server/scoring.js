@@ -1,31 +1,11 @@
-function matchesRegion(supplier, region) {
-  if (!region) return true;
-  const r = region.trim().toLowerCase();
-  return supplier.regions.some(
-    (x) =>
-      x.toLowerCase() === r ||
-      x.toLowerCase().includes(r) ||
-      r.includes(x.toLowerCase()) ||
-      x === "Вся Россия"
-  );
-}
-
 export function scoreSupplier(supplier, filters) {
   let score = supplier.rating * 20;
   const reasons = [];
 
-  if (filters.region && matchesRegion(supplier, filters.region)) {
-    score += 15;
-    if (
-      supplier.city.toLowerCase().includes(filters.region.toLowerCase().split(" ")[0])
-    ) {
-      score += 10;
-      reasons.push("Работает в выбранном регионе");
-    } else if (supplier.regions.includes("Вся Россия")) {
-      reasons.push("Доставка по всей России");
-    } else {
-      reasons.push("Покрывает ваш регион");
-    }
+  const filterCity = String(filters.city || "").trim().toLowerCase();
+  if (filterCity && supplier.city.toLowerCase() === filterCity) {
+    score += 25;
+    reasons.push("Поставщик в выбранном городе");
   }
 
   if (supplier.hasCertificates) {

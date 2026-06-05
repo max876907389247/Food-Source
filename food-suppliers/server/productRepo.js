@@ -1,4 +1,9 @@
 import { execute, query } from "./db.js";
+import {
+  formatProductMinOrder,
+  formatProductPriceHint,
+  parseProductMinOrderInput,
+} from "./priceUtils.js";
 
 function mapProduct(row) {
   return {
@@ -43,13 +48,18 @@ function validateProductBody(body) {
       throw new Error("Некорректная цена");
     }
   }
+  const minOrderRub = parseProductMinOrderInput(body?.minOrderRub ?? body?.minOrder);
+  if (Number.isNaN(minOrderRub)) {
+    throw new Error("Некорректная минимальная цена заказа");
+  }
+
   return {
     name,
     categoryId: body?.categoryId ? String(body.categoryId).trim() : null,
     description: String(body?.description || "").trim() || null,
-    priceHint: String(body?.priceHint || "").trim() || null,
+    priceHint: formatProductPriceHint(pricePerUnit, unit),
     pricePerUnit,
-    minOrder: String(body?.minOrder || "").trim() || null,
+    minOrder: formatProductMinOrder(minOrderRub),
     unit,
   };
 }

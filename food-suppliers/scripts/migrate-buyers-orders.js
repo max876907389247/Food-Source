@@ -39,14 +39,17 @@ async function run() {
 
   if (!(await columnExists(conn, "users", "audience"))) {
     await conn.query(
-      "ALTER TABLE users ADD COLUMN audience ENUM('buyer', 'seller', 'viewer') NOT NULL DEFAULT 'buyer' AFTER role"
+      "ALTER TABLE users ADD COLUMN audience ENUM('buyer', 'seller') NOT NULL DEFAULT 'buyer' AFTER role"
     );
     console.log("  + users.audience");
   } else {
     await conn.query(
-      "ALTER TABLE users MODIFY COLUMN audience ENUM('buyer', 'seller', 'viewer') NOT NULL DEFAULT 'buyer'"
+      "UPDATE users SET audience = 'buyer' WHERE audience = 'viewer'"
     );
-    console.log("  ~ users.audience (viewer)");
+    await conn.query(
+      "ALTER TABLE users MODIFY COLUMN audience ENUM('buyer', 'seller') NOT NULL DEFAULT 'buyer'"
+    );
+    console.log("  ~ users.audience (без наблюдателя)");
   }
 
   const orgCols = [
@@ -138,6 +141,40 @@ async function run() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     console.log("  + таблица order_items");
+  }
+
+  if (!(await columnExists(conn, "supply_proposals", "line_items"))) {
+    await conn.query(
+      `ALTER TABLE supply_proposals
+       ADD COLUMN line_items JSON NULL AFTER volume_offer,
+       ADD COLUMN offer_total DECIMAL(12, 2) NULL AFTER line_items`
+    );
+    console.log("  + supply_proposals.line_items, offer_total");
+  }
+
+  if (!(await tableExists(conn, "favorites"))) {
+    await conn.query(`
+      CREATE TABLE favorites (
+        id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id INT UNSIGNED NOT NULL,
+        target_type ENUM('supplier', 'buyer_demand') NOT NULL,
+        target_id VARCHAR(64) NOT NULL,
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY uk_favorites_user_target (user_id, target_type, target_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_favorites_user_type (user_id, target_type)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log("  + таблица favorites");
+  }
+
+  if (!(await columnExists(conn, "supply_proposals", "status"))) {
+    await conn.query(
+      `ALTER TABLE supply_proposals
+       ADD COLUMN status ENUM('pending', 'accepted', 'rejected') NOT NULL DEFAULT 'pending' AFTER offer_total`
+    );
+    console.log("  + supply_proposals.status");
   }
 
   const sqlPath = path.join(__dirname, "../sql/data-updates.sql");

@@ -21,12 +21,12 @@ const SELLER_PRESETS = [
   { label: "Рестораны и HoReCa", category: "ready", query: "ресторан" },
   { label: "Ритейл и магазины", category: "", query: "магазин" },
   { label: "Крупный опт", category: "ingredients", query: "опт" },
-  { label: "Москва и МО", category: "", region: "Москва" },
+  { label: "Москва", category: "", city: "Москва" },
 ];
 
 /**
  * @param {'buyer'|'seller'} mode
- * @param {{ categories: {id:string,label:string}[], regions: string[], fetchSuggestions: () => Promise<object[]>, applyFilters: (f: object) => void }} ctx
+ * @param {{ categories: {id:string,label:string}[], cities: string[], fetchSuggestions: () => Promise<object[]>, applyFilters: (f: object) => void }} ctx
  */
 export function showQuickSetupWizard(mode, ctx) {
   if (isQuickSetupDone(mode)) return Promise.resolve(false);
@@ -34,7 +34,7 @@ export function showQuickSetupWizard(mode, ctx) {
   return new Promise((resolve) => {
     const isBuyer = mode === "buyer";
     const presets = isBuyer ? BUYER_PRESETS : SELLER_PRESETS;
-    const state = { category: "", region: "", query: "", suggestionId: null };
+    const state = { category: "", city: "", query: "", suggestionId: null };
 
     let modal = document.getElementById("quick-setup");
     if (!modal) {
@@ -51,11 +51,11 @@ export function showQuickSetupWizard(mode, ctx) {
       )
       .join("");
 
-    const regionChips = ctx.regions
+    const cityChips = (ctx.cities || [])
       .slice(0, 12)
       .map(
-        (r) =>
-          `<button type="button" class="filter-chip" data-chip="region" data-value="${escapeHtml(r)}">${escapeHtml(r)}</button>`
+        (c) =>
+          `<button type="button" class="filter-chip" data-chip="city" data-value="${escapeHtml(c)}">${escapeHtml(c)}</button>`
       )
       .join("");
 
@@ -77,7 +77,7 @@ export function showQuickSetupWizard(mode, ctx) {
         <div class="panel__body quick-setup__body">
           <p class="quick-setup__lead">${
             isBuyer
-              ? "Выберите категории, регион и примеры из каталога — мы сразу покажем подходящих поставщиков."
+              ? "Выберите категории, город и примеры из каталога — мы сразу покажем подходящих поставщиков."
               : "Уточните, каких покупателей вы ищете — заявки отфильтруются автоматически."
           }</p>
 
@@ -87,8 +87,8 @@ export function showQuickSetupWizard(mode, ctx) {
           </div>
 
           <div class="quick-setup__section">
-            <h3 class="quick-setup__section-title">Регион</h3>
-            <div class="filter-chip-group" data-chip-group="region">${regionChips}</div>
+            <h3 class="quick-setup__section-title">Город</h3>
+            <div class="filter-chip-group" data-chip-group="city">${cityChips}</div>
           </div>
 
           <div class="quick-setup__section">
@@ -128,8 +128,8 @@ export function showQuickSetupWizard(mode, ctx) {
       modal.querySelectorAll('[data-chip="category"]').forEach((btn) => {
         btn.classList.toggle("is-selected", btn.dataset.value === state.category);
       });
-      modal.querySelectorAll('[data-chip="region"]').forEach((btn) => {
-        btn.classList.toggle("is-selected", btn.dataset.value === state.region);
+      modal.querySelectorAll('[data-chip="city"]').forEach((btn) => {
+        btn.classList.toggle("is-selected", btn.dataset.value === state.city);
       });
       modal.querySelectorAll(".quick-setup__suggestion").forEach((el) => {
         el.classList.toggle("is-selected", el.dataset.id === state.suggestionId);
@@ -151,7 +151,7 @@ export function showQuickSetupWizard(mode, ctx) {
       btn.addEventListener("click", () => {
         const p = presets[Number(btn.dataset.preset)];
         state.category = p.category || "";
-        state.region = p.region || "";
+        state.city = p.city || p.region || "";
         state.query = p.query || "";
         state.suggestionId = null;
         syncChips();
@@ -161,7 +161,7 @@ export function showQuickSetupWizard(mode, ctx) {
     modal.querySelector("#quick-setup-apply")?.addEventListener("click", () => {
       ctx.applyFilters({
         category: state.category,
-        region: state.region,
+        city: state.city,
         query: state.query,
       });
       close(true);
@@ -196,12 +196,10 @@ export function showQuickSetupWizard(mode, ctx) {
           .slice(0, 8)
           .map((item) => {
             const title = item.name || item.companyName;
-            const meta = isBuyer
-              ? `${item.city || ""}${item.regions?.length ? ` · ${item.regions[0]}` : ""}`
-              : `${item.city || ""} · ${item.region || ""}`;
+            const meta = item.city || "";
             return `<button type="button" class="quick-setup__suggestion" data-id="${escapeHtml(String(item.id))}"
               data-category="${escapeHtml(item.categories?.[0] || item.categoryId || "")}"
-              data-region="${escapeHtml(item.regions?.[0] || item.region || "")}"
+              data-city="${escapeHtml(item.city || item.regions?.[0] || item.region || "")}"
               data-query="${escapeHtml(item.name || item.companyName || "")}">
               <strong>${escapeHtml(title)}</strong>
               <span class="muted">${escapeHtml(meta)}</span>
@@ -213,7 +211,7 @@ export function showQuickSetupWizard(mode, ctx) {
           btn.addEventListener("click", () => {
             state.suggestionId = btn.dataset.id;
             state.category = btn.dataset.category || "";
-            state.region = btn.dataset.region || "";
+            state.city = btn.dataset.city || "";
             state.query = btn.dataset.query || "";
             syncChips();
           });

@@ -1,36 +1,66 @@
 import { api, auth, isLoggedIn, openAuthModal } from "./auth.js";
 import {
   canUseBuyerFeatures,
-  canViewSupplierDetail,
+  isAdminAccount,
   promptBuyerAuth,
 } from "./audience.js";
 import { initMyDemands } from "./my-demands.js";
 import { maybeShowQuickSetup } from "./onboarding.js";
+import { createFavoritesStore, favoriteButtonHtml } from "./favorites.js";
 import { closeAllPanels, escapeHtml, openPanel } from "./ui.js";
+import {
+  formatDemandBudget,
+  formatDemandVolume,
+  formatMoney,
+  parseDemandBudgetInput,
+  formatProductMinOrder,
+  formatProductPrice,
+  formatProposalDate,
+  orderStatusLabel,
+  renderOrderItemsTable,
+  renderProposalFacts,
+  renderProposalProductsSection,
+  renderProposalItemsSummary,
+  renderProposalStatusBadge,
+  truncateMessage,
+} from "./proposals-shared.js";
 
 const MAX_COMPARE = 3;
 
 const state = {
   category: "",
-  region: "",
+  city: "",
   query: "",
+  organization: "",
   sort: "score",
   budgetKg: "",
   compare: [],
   view: "list",
   categories: [],
-  regions: [],
+  cities: [],
   loading: true,
   error: null,
-  readOnly: false,
   demandsInited: false,
+  incomingProposals: [],
+  favoritesStore: null,
+  adminBuyers: [],
+  adminBuyersAll: [],
+  adminBuyerFilters: {
+    category: "",
+    city: "",
+    organization: "",
+    query: "",
+    status: "",
+    sort: "name",
+  },
 };
 
 const els = {
   searchForm: document.getElementById("search-form"),
   category: document.getElementById("filter-category"),
-  region: document.getElementById("filter-region"),
+  city: document.getElementById("filter-city"),
   query: document.getElementById("filter-query"),
+  organization: document.getElementById("filter-organization"),
   budget: document.getElementById("filter-budget"),
   sort: document.getElementById("filter-sort"),
   results: document.getElementById("results"),
@@ -40,15 +70,24 @@ const els = {
   error: document.getElementById("error-state"),
   compareBar: document.getElementById("compare-bar"),
   compareList: document.getElementById("compare-list"),
+  compareHint: document.getElementById("compare-hint"),
   compareGo: document.getElementById("compare-go"),
   compareClear: document.getElementById("compare-clear"),
   panelCompare: document.getElementById("panel-compare"),
   panelDetail: document.getElementById("panel-detail"),
   panelDeal: document.getElementById("panel-deal"),
   panelOrders: document.getElementById("panel-orders"),
+  panelIncomingProposal: document.getElementById("panel-incoming-proposal"),
   overlay: document.getElementById("overlay"),
   navTabs: document.querySelectorAll("#header-nav [data-view]"),
   recommendation: document.getElementById("recommendation-card"),
+  adminBuyersSearchForm: document.getElementById("admin-buyers-search-form"),
+  adminBuyersCategory: document.getElementById("admin-buyers-filter-category"),
+  adminBuyersCity: document.getElementById("admin-buyers-filter-city"),
+  adminBuyersOrganization: document.getElementById("admin-buyers-filter-organization"),
+  adminBuyersQuery: document.getElementById("admin-buyers-filter-query"),
+  adminBuyersStatus: document.getElementById("admin-buyers-filter-status"),
+  adminBuyersSort: document.getElementById("admin-buyers-filter-sort"),
 };
 
 function stars(rating) {
@@ -61,13 +100,6 @@ function stars(rating) {
     else out += "☆";
   }
   return out;
-}
-
-function formatMoney(n) {
-  return new Intl.NumberFormat("ru-RU", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(n);
 }
 
 function parseMinOrderRubles(minOrderText) {
@@ -93,7 +125,8 @@ function categoryLabel(id) {
 function buildQueryParams() {
   const params = new URLSearchParams();
   if (state.category) params.set("category", state.category);
-  if (state.region) params.set("region", state.region);
+  if (state.city) params.set("city", state.city);
+  if (state.organization) params.set("org", state.organization);
   if (state.query) params.set("q", state.query);
   if (state.budgetKg) params.set("budgetKg", state.budgetKg);
   if (state.sort) params.set("sort", state.sort);
@@ -130,10 +163,10 @@ function renderProductsList(products) {
   const items = products
     .slice(0, 4)
     .map((p) => {
-      const price =
-        p.priceHint ||
-        (p.pricePerUnit != null ? `${p.pricePerUnit} ₽/${escapeHtml(p.unit || "шт.")}` : "");
-      return `<li><strong>${escapeHtml(p.name)}</strong>${price ? ` — ${escapeHtml(price)}` : ""}${p.minOrder ? ` <span class="muted">(мин. ${escapeHtml(p.minOrder)})</span>` : ""}</li>`;
+      const price = formatProductPrice(p.pricePerUnit, p.unit, p.priceHint);
+      const minOrder = formatProductMinOrder(p.minOrder);
+      const minPart = minOrder !== "—" ? ` <span class="muted">(${escapeHtml(minOrder)})</span>` : "";
+      return `<li><strong>${escapeHtml(p.name)}</strong>${price !== "—" ? ` — ${escapeHtml(price)}` : ""}${minPart}</li>`;
     })
     .join("");
   const more =
@@ -145,6 +178,7 @@ function renderProductsList(products) {
 
 function renderCard(supplier) {
   const inCompare = state.compare.includes(supplier.id);
+  const inFavorite = state.favoritesStore?.has(supplier.id);
   const cats =
     supplier.categoryLabels?.join(", ") ||
     supplier.categories.map(categoryLabel).join(", ");
@@ -178,15 +212,16 @@ function renderCard(supplier) {
       }
       <div class="supplier-card__actions">
         ${
-          state.readOnly || !canUseBuyerFeatures() || !supplier.products?.length
+          !canUseBuyerFeatures() || !supplier.products?.length
             ? ""
             : `<button type="button" class="btn btn--sm btn--primary" data-action="deal">Предложить сделку</button>`
         }
         <button type="button" class="btn btn--sm btn--ghost" data-action="detail">Подробнее</button>
         ${
-          state.readOnly
+          !canUseBuyerFeatures()
             ? ""
-            : `<button type="button" class="btn btn--sm ${inCompare ? "btn--active" : "btn--ghost"}" data-action="compare" ${!inCompare && state.compare.length >= MAX_COMPARE ? "disabled" : ""}>
+            : `${favoriteButtonHtml(supplier.id, inFavorite, { sm: true, className: "btn--favorite-card" })}
+        <button type="button" class="btn btn--sm ${inCompare ? "btn--active" : "btn--ghost"}" data-action="compare" ${!inCompare && state.compare.length >= MAX_COMPARE ? "disabled" : ""}>
           ${inCompare ? "В сравнении" : "Сравнить"}
         </button>`
         }
@@ -200,7 +235,7 @@ function updateRecommendation(top) {
   if (!els.recommendation) return;
   if (!top) {
     els.recommendation.innerHTML =
-      '<p class="sidebar-card__hint">Укажите категорию и регион — здесь появится рекомендация из базы данных.</p>';
+      '<p class="sidebar-card__hint">Укажите категорию и город — здесь появится рекомендация из базы данных.</p>';
     return;
   }
   els.recommendation.innerHTML = `
@@ -217,19 +252,61 @@ function updateRecommendation(top) {
   `;
 }
 
+function updateSuppliersSidebar(list) {
+  if (!els.recommendation) return;
+  if (!isAdminAccount()) {
+    updateRecommendation(list?.[0] || null);
+    return;
+  }
+  if (!list?.length) {
+    els.recommendation.innerHTML =
+      '<p class="sidebar-card__hint">Поставщики появятся после добавления в базу данных.</p>';
+    return;
+  }
+  const withCerts = list.filter((s) => s.hasCertificates).length;
+  const top = list[0];
+  els.recommendation.innerHTML = `
+    <p class="rec__label">Сводка каталога</p>
+    <p class="rec__text">Всего поставщиков: <strong>${list.length}</strong><br>С сертификатами: <strong>${withCerts}</strong></p>
+    <h3 class="rec__name">${escapeHtml(top.name)}</h3>
+    <p class="rec__text">Лучший рейтинг: <strong>${top.rating}</strong>${top._score ? ` · оценка ${top._score.score}` : ""}</p>
+    <button type="button" class="btn btn--primary" data-id="${top.id}">Открыть карточку</button>
+  `;
+}
+
 function showBuyerContentView(view) {
   const isDemands = view === "demands";
-  const isCatalog = view === "list";
-  document.querySelector("#buyer-app .hero")?.toggleAttribute("hidden", !isCatalog);
-  document.getElementById("buyer-catalog-section")?.toggleAttribute("hidden", !isCatalog && view !== "orders");
+  const isSuppliersCatalog = view === "list";
+  const isBuyersCatalog = view === "buyers-catalog";
+  const isListResults = view === "orders" || view === "incoming-proposals" || view === "favorites";
+  document.querySelector("#buyer-app .hero:not(#admin-buyers-hero)")?.toggleAttribute("hidden", !isSuppliersCatalog);
+  document.getElementById("admin-buyers-hero")?.toggleAttribute("hidden", !isBuyersCatalog);
+  document.getElementById("buyer-catalog-section")?.toggleAttribute(
+    "hidden",
+    !isSuppliersCatalog && !isListResults && !isBuyersCatalog
+  );
   document.getElementById("buyer-demands-panel")?.toggleAttribute("hidden", !isDemands);
-  if (els.compareBar) els.compareBar.hidden = !isCatalog || state.readOnly;
+  if (els.compareBar) {
+    const showCompare = isSuppliersCatalog && canUseBuyerFeatures();
+    els.compareBar.hidden = !showCompare;
+    if (showCompare) renderCompareBar();
+  }
 }
 
 async function renderResults() {
   if (state.view === "orders") {
     showBuyerContentView("orders");
     await renderOrders();
+    return;
+  }
+  if (state.view === "incoming-proposals") {
+    showBuyerContentView("incoming-proposals");
+    await renderIncomingProposals();
+    return;
+  }
+  if (state.view === "favorites") {
+    showBuyerContentView("favorites");
+    await renderBuyerFavorites();
     return;
   }
   if (state.view === "demands") {
@@ -244,6 +321,11 @@ async function renderResults() {
     }
     return;
   }
+  if (state.view === "buyers-catalog") {
+    showBuyerContentView("buyers-catalog");
+    await renderAdminBuyersCatalog();
+    return;
+  }
   showBuyerContentView("list");
   hideError();
   setLoading(true);
@@ -256,17 +338,18 @@ async function renderResults() {
     if (list.length === 0) {
       els.results.innerHTML = "";
       els.empty.hidden = false;
-      updateRecommendation(null);
+      updateSuppliersSidebar([]);
       return;
     }
 
     els.empty.hidden = true;
+    els.results.className = "results";
     els.results.innerHTML = list.map(renderCard).join("");
-    updateRecommendation(list[0]);
+    updateSuppliersSidebar(list);
   } catch (err) {
     showError(err.message);
     els.results.innerHTML = "";
-    updateRecommendation(null);
+    updateSuppliersSidebar([]);
   } finally {
     setLoading(false);
   }
@@ -274,7 +357,19 @@ async function renderResults() {
 
 function renderCompareBar() {
   const names = state.compare;
-  els.compareBar.hidden = names.length === 0;
+  const onCatalog = state.view === "list";
+  if (!canUseBuyerFeatures() || !onCatalog) {
+    els.compareBar.hidden = true;
+    return;
+  }
+  els.compareBar.hidden = false;
+  if (els.compareHint) {
+    els.compareHint.hidden = names.length >= 2;
+    els.compareHint.textContent =
+      names.length === 1
+        ? "Добавьте ещё одну организацию для сравнения"
+        : "Добавьте 2 организации для сравнения";
+  }
   els.compareList.innerHTML = state.compare
     .map(
       (id) => `
@@ -297,12 +392,244 @@ function renderCompareBar() {
     .catch(() => {});
 }
 
+function renderAdminBuyerCard(b) {
+  const status = b.isActive
+    ? '<span class="badge badge--ok">Активен</span>'
+    : '<span class="badge badge--muted">Снят</span>';
+  const categoryBadge = b.categoryLabel
+    ? `<span class="badge badge--score">${escapeHtml(b.categoryLabel)}</span>`
+    : "";
+  const phone = b.contacts?.phone?.trim() || "";
+  const email = b.contacts?.email?.trim() || "";
+  return `
+    <article class="supplier-card" data-admin-buyer-id="${b.id}">
+      <div class="supplier-card__top">
+        <div>
+          <h3 class="supplier-card__title">${escapeHtml(b.companyName)}</h3>
+          <p class="supplier-card__meta">${escapeHtml(b.businessType)} · ${escapeHtml(b.city)}</p>
+        </div>
+        <div class="supplier-card__badges">
+          ${status}
+          ${categoryBadge}
+        </div>
+      </div>
+      <p class="supplier-card__desc">${escapeHtml(b.description)}</p>
+      <dl class="supplier-card__facts">
+        <div><dt>Категория</dt><dd>${b.categoryLabel ? escapeHtml(b.categoryLabel) : "—"}</dd></div>
+        <div><dt>Объём</dt><dd>${escapeHtml(adminBuyerVolumeLabel(b))}</dd></div>
+        <div><dt>Бюджет</dt><dd>${escapeHtml(adminBuyerBudgetLabel(b))}</dd></div>
+        <div><dt>Контакты</dt><dd>${phone ? escapeHtml(phone) : "—"}${email ? `<br><span class="muted">${escapeHtml(email)}</span>` : ""}</dd></div>
+      </dl>
+      <div class="supplier-card__actions">
+        <button type="button" class="btn btn--sm btn--ghost" data-admin-buyer-open="${b.id}">Подробнее</button>
+        ${
+          phone
+            ? `<a class="btn btn--sm btn--primary" href="tel:${phone.replace(/\s/g, "")}">Позвонить</a>`
+            : ""
+        }
+        ${
+          email
+            ? `<a class="btn btn--sm btn--ghost" href="mailto:${email}">Написать</a>`
+            : ""
+        }
+      </div>
+    </article>`;
+}
+
+function updateAdminBuyersSidebar(list) {
+  if (!els.recommendation) return;
+  if (!list?.length) {
+    els.recommendation.innerHTML =
+      '<p class="sidebar-card__hint">Заявки покупателей появятся здесь после публикации в системе.</p>';
+    return;
+  }
+  const activeCount = list.filter((b) => b.isActive).length;
+  const top = [...list].sort(
+    (a, b) =>
+      (parseDemandBudgetInput(b.budgetText) || 0) - (parseDemandBudgetInput(a.budgetText) || 0)
+  )[0];
+  els.recommendation.innerHTML = `
+    <p class="rec__label">Сводка каталога</p>
+    <p class="rec__text">Всего заявок: <strong>${list.length}</strong><br>Активных: <strong>${activeCount}</strong></p>
+    ${
+      top
+        ? `<h3 class="rec__name">${escapeHtml(top.companyName)}</h3>
+    <p class="rec__text">Наибольший бюджет: <strong>${escapeHtml(adminBuyerBudgetLabel(top))}</strong></p>
+    <button type="button" class="btn btn--primary" data-admin-buyer-open="${top.id}">Открыть карточку</button>`
+        : ""
+    }
+  `;
+}
+
+function adminBuyerVolumeLabel(b) {
+  if (b.volumeKg != null && b.volumeKg !== "") return formatDemandVolume(b.volumeKg);
+  return b.volumeText || "—";
+}
+
+function adminBuyerBudgetLabel(b) {
+  if (!b.budgetText) return "—";
+  if (String(b.budgetText).includes("мин. от") || String(b.budgetText).includes("до ")) {
+    return b.budgetText;
+  }
+  const rub = parseDemandBudgetInput(b.budgetText);
+  return rub != null ? formatDemandBudget(rub) : b.budgetText;
+}
+
+function openAdminBuyerPanel(buyer) {
+  const panel = els.panelDetail;
+  const status = buyer.isActive
+    ? '<span class="badge badge--ok">Активен</span>'
+    : '<span class="badge badge--muted">Снят</span>';
+  panel.innerHTML = `
+    <header class="panel__head">
+      <h2>${escapeHtml(buyer.companyName)}</h2>
+      <button type="button" class="panel__close" data-close aria-label="Закрыть">×</button>
+    </header>
+    <div class="panel__body">
+      <p class="supplier-card__meta">${status}${buyer.categoryLabel ? ` · ${escapeHtml(buyer.categoryLabel)}` : ""}</p>
+      <dl class="detail-dl">
+        <div><dt>Тип бизнеса</dt><dd>${escapeHtml(buyer.businessType)}</dd></div>
+        <div><dt>Город</dt><dd>${escapeHtml(buyer.city)}</dd></div>
+        <div><dt>Объём</dt><dd>${escapeHtml(buyer.volumeText || formatDemandVolume(buyer.volumeKg))}</dd></div>
+        <div><dt>Бюджет</dt><dd>${escapeHtml(buyer.budgetText || "—")}</dd></div>
+      </dl>
+      <section class="detail-section">
+        <h3>Описание запроса</h3>
+        <p>${escapeHtml(buyer.description)}</p>
+      </section>
+      <section class="detail-section">
+        <h3>Контакты</h3>
+        <ul class="contact-list">
+          <li><a href="tel:${buyer.contacts.phone.replace(/\s/g, "")}">${escapeHtml(buyer.contacts.phone)}</a></li>
+          <li><a href="mailto:${buyer.contacts.email}">${escapeHtml(buyer.contacts.email)}</a></li>
+        </ul>
+      </section>
+      ${buyer.account?.username ? `<p class="field__hint">Аккаунт: <strong>${escapeHtml(buyer.account.username)}</strong></p>` : ""}
+    </div>
+    <footer class="panel__foot">
+      <button type="button" class="btn btn--ghost" data-close>Закрыть</button>
+    </footer>
+  `;
+  openPanel(panel);
+}
+
+function readAdminBuyerFiltersFromForm() {
+  const f = state.adminBuyerFilters;
+  f.category = els.adminBuyersCategory?.value || "";
+  f.city = els.adminBuyersCity?.value || "";
+  f.organization = els.adminBuyersOrganization?.value || "";
+  f.query = els.adminBuyersQuery?.value || "";
+  f.status = els.adminBuyersStatus?.value || "";
+  f.sort = els.adminBuyersSort?.value || "name";
+}
+
+function filterAdminBuyers(list) {
+  const f = state.adminBuyerFilters;
+  const org = f.organization.trim().toLowerCase();
+  const q = f.query.trim().toLowerCase();
+  return list.filter((b) => {
+    if (f.category && String(b.categoryId) !== String(f.category)) return false;
+    if (f.city && b.city !== f.city) return false;
+    if (org && !b.companyName.toLowerCase().includes(org)) return false;
+    if (q) {
+      const hay = `${b.description} ${b.businessType} ${b.companyName}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    if (f.status === "active" && !b.isActive) return false;
+    if (f.status === "inactive" && b.isActive) return false;
+    return true;
+  });
+}
+
+function sortAdminBuyers(list) {
+  const sorted = [...list];
+  const { sort } = state.adminBuyerFilters;
+  if (sort === "budget") {
+    sorted.sort(
+      (a, b) =>
+        (parseDemandBudgetInput(b.budgetText) || 0) - (parseDemandBudgetInput(a.budgetText) || 0)
+    );
+  } else if (sort === "volume") {
+    sorted.sort((a, b) => (b.volumeKg || 0) - (a.volumeKg || 0));
+  } else if (sort === "newest") {
+    sorted.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  } else {
+    sorted.sort((a, b) => a.companyName.localeCompare(b.companyName, "ru"));
+  }
+  return sorted;
+}
+
+function renderAdminBuyersList(list) {
+  state.adminBuyers = list;
+  if (!list.length) {
+    els.empty.hidden = false;
+    els.empty.querySelector("h2").textContent = "Ничего не найдено";
+    els.empty.querySelector("p").textContent = "Измените фильтры или проверьте данные в базе.";
+    els.results.innerHTML = "";
+    updateAdminBuyersSidebar([]);
+    els.resultsMeta.textContent = "Найдено: 0 покупателей · данные из MySQL";
+    return;
+  }
+  els.empty.hidden = true;
+  els.results.className = "results";
+  els.results.innerHTML = list.map(renderAdminBuyerCard).join("");
+  els.resultsMeta.textContent = `Найдено: ${list.length} покупател${list.length === 1 ? "ь" : list.length < 5 ? "я" : "ей"} · данные из MySQL`;
+  updateAdminBuyersSidebar(list);
+}
+
+async function renderAdminBuyersCatalog() {
+  hideError();
+  setLoading(true);
+  els.compareBar.hidden = true;
+  try {
+    if (!state.adminBuyersAll.length) {
+      state.adminBuyersAll = await api("/api/admin/buyer-demands");
+    }
+    readAdminBuyerFiltersFromForm();
+    const list = sortAdminBuyers(filterAdminBuyers(state.adminBuyersAll));
+    setLoading(false);
+    els.loading.hidden = true;
+    renderAdminBuyersList(list);
+  } catch (err) {
+    setLoading(false);
+    els.loading.hidden = true;
+    showError(err.message);
+    els.results.innerHTML = "";
+    updateAdminBuyersSidebar([]);
+  }
+}
+
+function populateAdminBuyerFilterOptions() {
+  if (!els.adminBuyersCategory || !els.adminBuyersCity) return;
+  const catValue = els.adminBuyersCategory.value;
+  const cityValue = els.adminBuyersCity.value;
+  els.adminBuyersCategory.innerHTML = '<option value="">Все категории</option>';
+  els.adminBuyersCity.innerHTML = '<option value="">Любой город</option>';
+  state.categories.forEach((c) => {
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = c.label;
+    els.adminBuyersCategory.appendChild(opt);
+  });
+  state.cities.forEach((c) => {
+    const opt = document.createElement("option");
+    opt.value = c;
+    opt.textContent = c;
+    els.adminBuyersCity.appendChild(opt);
+  });
+  els.adminBuyersCategory.value = catValue;
+  els.adminBuyersCity.value = cityValue;
+}
+
 async function openDetail(id) {
-  if (!canViewSupplierDetail()) {
-    openAuthModal("login", {
-      message:
-        "Каталог доступен без входа. Чтобы открыть карточку поставщика, войдите в аккаунт покупателя или наблюдателя.",
-    });
+  if (!canUseBuyerFeatures() && !isAdminAccount()) {
+    if (!isLoggedIn()) promptBuyerAuth();
+    else {
+      openAuthModal("login", {
+        audience: "buyer",
+        message: "Чтобы открыть карточку поставщика, войдите в аккаунт покупателя.",
+      });
+    }
     return;
   }
   try {
@@ -316,8 +643,8 @@ async function openDetail(id) {
               .map(
                 (p) => `<tr>
                   <td><strong>${escapeHtml(p.name)}</strong>${p.categoryLabel ? `<br><span class="muted">${escapeHtml(p.categoryLabel)}</span>` : ""}${p.description ? `<br>${escapeHtml(p.description)}` : ""}</td>
-                  <td>${p.priceHint ? escapeHtml(p.priceHint) : "—"}</td>
-                  <td>${p.minOrder ? escapeHtml(p.minOrder) : "—"}</td>
+                  <td>${escapeHtml(formatProductPrice(p.pricePerUnit, p.unit, p.priceHint))}</td>
+                  <td>${escapeHtml(formatProductMinOrder(p.minOrder))}</td>
                 </tr>`
               )
               .join("")}
@@ -382,12 +709,13 @@ async function openDetail(id) {
       </div>
       <footer class="panel__foot">
         <a class="btn btn--primary" href="tel:${s.contacts.phone.replace(/\s/g, "")}">Связаться</a>
+        ${canUseBuyerFeatures() ? favoriteButtonHtml(s.id, state.favoritesStore?.has(s.id), { sm: false, className: "btn--favorite-detail" }) : ""}
         ${
-          state.readOnly
-            ? ""
-            : `<button type="button" class="btn btn--ghost" data-action="compare-detail" data-id="${s.id}">
+          canUseBuyerFeatures()
+            ? `<button type="button" class="btn btn--ghost" data-action="compare-detail" data-id="${s.id}">
           ${state.compare.includes(s.id) ? "Убрать из сравнения" : "Добавить в сравнение"}
         </button>`
+            : ""
         }
       </footer>
     `;
@@ -551,25 +879,6 @@ async function openDealPanel(id) {
   }
 }
 
-function renderOrderItemsTable(items) {
-  if (!items?.length) return '<p class="muted">Позиции не указаны.</p>';
-  return `<div class="panel__scroll-x"><table class="products-table">
-    <thead><tr><th>Продукция</th><th>Количество</th><th>Цена</th><th>Сумма</th></tr></thead>
-    <tbody>
-      ${items
-        .map(
-          (i) => `<tr>
-            <td><strong>${escapeHtml(i.productName)}</strong></td>
-            <td>${i.quantity} ${escapeHtml(i.unit)}</td>
-            <td>${formatMoney(i.unitPrice)} ₽ / ${escapeHtml(i.unit)}</td>
-            <td><strong>${formatMoney(i.lineTotal)} ₽</strong></td>
-          </tr>`
-        )
-        .join("")}
-    </tbody>
-  </table></div>`;
-}
-
 function renderOrderContacts(contacts) {
   const phone = contacts?.phone?.trim();
   const email = contacts?.email?.trim();
@@ -620,7 +929,7 @@ async function openOrderPanel(orderId) {
       </header>
       <div class="panel__body">
         <p class="deal-panel__lead">Поставщик: <strong>${escapeHtml(order.supplierName)}</strong></p>
-        <p class="supplier-card__meta">${formatDate(order.createdAt)} · ${statusLabel(order.status)} · <strong>${formatMoney(order.totalAmount)} ₽</strong></p>
+        <p class="supplier-card__meta">${formatDate(order.createdAt)} · ${orderStatusLabel(order.status)} · <strong>${formatMoney(order.totalAmount)} ₽</strong></p>
 
         <section class="detail-section">
           <h3>Состав заказа</h3>
@@ -657,6 +966,194 @@ async function openOrderPanel(orderId) {
   }
 }
 
+async function updateIncomingProposalStatus(proposalId, status) {
+  const { proposal } = await api(`/api/my/incoming-proposals/${proposalId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+  const idx = state.incomingProposals.findIndex((p) => p.id === proposal.id);
+  if (idx >= 0) state.incomingProposals[idx] = proposal;
+  else state.incomingProposals.unshift(proposal);
+  openIncomingProposalPanel(proposal);
+  if (state.view === "incoming-proposals") {
+    els.results.innerHTML = state.incomingProposals.map(renderIncomingProposalCard).join("");
+  }
+}
+
+function renderIncomingProposalCard(p) {
+  const seller = p.seller || {};
+  return `
+    <article class="proposal-card" data-incoming-proposal-id="${p.id}">
+      <div class="proposal-card__head">
+        <h3 class="proposal-card__title">${escapeHtml(seller.supplierName || "Поставщик")}</h3>
+        <div class="proposal-card__head-right">
+          ${renderProposalStatusBadge(p.status)}
+          <span class="proposal-card__date">${formatProposalDate(p.updatedAt || p.createdAt)}</span>
+        </div>
+      </div>
+      <p class="proposal-card__meta">${escapeHtml(seller.city || "")}${seller.region ? ` · ${escapeHtml(seller.region)}` : ""}${p.buyer?.volumeText ? ` · заявка: ${escapeHtml(p.buyer.volumeText)}` : ""}</p>
+      <p class="proposal-card__message">${escapeHtml(truncateMessage(p.message))}</p>
+      ${renderProposalItemsSummary(p.lineItems)}
+      ${renderProposalFacts(p.priceOffer, p.volumeOffer, p.offerTotal)}
+      <button type="button" class="btn btn--sm btn--primary" data-incoming-proposal-open="${p.id}">Открыть</button>
+    </article>`;
+}
+
+function openIncomingProposalPanel(proposal) {
+  const seller = proposal.seller || {};
+  const buyer = proposal.buyer || {};
+  const panel = els.panelIncomingProposal;
+  const isPending = !proposal.status || proposal.status === "pending";
+  const actionButtons = isPending
+    ? `<button type="button" class="btn btn--primary" id="btn-accept-proposal" data-proposal-id="${proposal.id}">Принять предложение</button>
+       <button type="button" class="btn btn--ghost" id="btn-reject-proposal" data-proposal-id="${proposal.id}">Отклонить предложение</button>`
+    : "";
+  const contactsBlock =
+    seller.contacts?.phone || seller.contacts?.email
+      ? `<section class="detail-section"><h3>Контакты поставщика</h3><ul class="contact-list">
+          ${seller.contacts.phone ? `<li><a href="tel:${seller.contacts.phone.replace(/\s/g, "")}">${escapeHtml(seller.contacts.phone)}</a></li>` : ""}
+          ${seller.contacts.email ? `<li><a href="mailto:${seller.contacts.email}">${escapeHtml(seller.contacts.email)}</a></li>` : ""}
+        </ul></section>`
+      : "";
+
+  panel.innerHTML = `
+    <header class="panel__head">
+      <h2>Ответ поставщика</h2>
+      <button type="button" class="panel__close" data-close aria-label="Закрыть">×</button>
+    </header>
+    <div class="panel__body">
+      <p class="deal-panel__lead">Поставщик: <strong>${escapeHtml(seller.supplierName || "")}</strong> ${renderProposalStatusBadge(proposal.status)}</p>
+      <p class="proposal-card__meta">${formatProposalDate(proposal.updatedAt || proposal.createdAt)}${seller.city ? ` · ${escapeHtml(seller.city)}` : ""}${seller.region ? ` · ${escapeHtml(seller.region)}` : ""}</p>
+      <dl class="detail-dl">
+        <div><dt>Ваша заявка</dt><dd>${buyer.volumeText ? escapeHtml(buyer.volumeText) : "—"}</dd></div>
+        <div><dt>Бюджет</dt><dd>${buyer.budgetText ? escapeHtml(buyer.budgetText) : "—"}</dd></div>
+      </dl>
+      <section class="detail-section">
+        <h3>Сообщение поставщика</h3>
+        <p>${escapeHtml(proposal.message)}</p>
+        ${renderProposalFacts(proposal.priceOffer, proposal.volumeOffer, proposal.offerTotal)}
+      </section>
+      ${renderProposalProductsSection(proposal.lineItems, proposal.offerTotal)}
+      ${contactsBlock}
+      <p class="auth-error" id="incoming-proposal-error" hidden></p>
+    </div>
+    <footer class="panel__foot">
+      ${actionButtons}
+      ${seller.contacts?.phone ? `<a class="btn btn--ghost" href="tel:${seller.contacts.phone.replace(/\s/g, "")}">Позвонить</a>` : ""}
+      ${seller.contacts?.email ? `<a class="btn btn--ghost" href="mailto:${seller.contacts.email}">Написать</a>` : ""}
+      <button type="button" class="btn btn--ghost" data-close>Закрыть</button>
+    </footer>
+  `;
+
+  panel.querySelector("#btn-accept-proposal")?.addEventListener("click", async () => {
+    const errEl = panel.querySelector("#incoming-proposal-error");
+    errEl.hidden = true;
+    try {
+      await updateIncomingProposalStatus(proposal.id, "accepted");
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.hidden = false;
+    }
+  });
+  panel.querySelector("#btn-reject-proposal")?.addEventListener("click", async () => {
+    if (!window.confirm("Отклонить предложение поставщика?")) return;
+    const errEl = panel.querySelector("#incoming-proposal-error");
+    errEl.hidden = true;
+    try {
+      await updateIncomingProposalStatus(proposal.id, "rejected");
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.hidden = false;
+    }
+  });
+  openPanel(panel);
+}
+
+async function renderBuyerFavorites() {
+  hideError();
+  setLoading(true);
+  els.compareBar.hidden = true;
+  els.resultsMeta.textContent = "Избранные поставщики";
+  try {
+    if (!canUseBuyerFeatures()) {
+      els.loading.hidden = true;
+      els.empty.hidden = true;
+      els.results.innerHTML =
+        '<div class="empty"><h2>Войдите в аккаунт</h2><p>Избранное доступно покупателям после входа.</p><button type="button" class="btn btn--primary" id="favorites-login">Войти</button></div>';
+      document.getElementById("favorites-login")?.addEventListener("click", () =>
+        openAuthModal("login", { audience: "buyer" })
+      );
+      setLoading(false);
+      return;
+    }
+    if (!state.favoritesStore) {
+      state.favoritesStore = createFavoritesStore("supplier");
+    }
+    await state.favoritesStore.load();
+    const ids = [...state.favoritesStore.ids];
+    setLoading(false);
+    els.loading.hidden = true;
+    if (!ids.length) {
+      els.empty.hidden = false;
+      els.empty.querySelector("h2").textContent = "Избранного пока нет";
+      els.empty.querySelector("p").textContent =
+        "Нажмите «☆ В избранное» на карточке поставщика в каталоге.";
+      els.results.innerHTML = "";
+      updateRecommendation(null);
+      return;
+    }
+    const list = await fetchSuppliers({ ids: ids.join(",") });
+    els.empty.hidden = true;
+    els.results.className = "results";
+    els.results.innerHTML = list.map(renderCard).join("");
+    updateRecommendation(list[0] || null);
+    els.resultsMeta.textContent = `В избранном: ${list.length} поставщик${list.length === 1 ? "" : list.length < 5 ? "а" : "ов"}`;
+  } catch (err) {
+    setLoading(false);
+    els.loading.hidden = true;
+    showError(err.message);
+  }
+}
+
+async function renderIncomingProposals() {
+  hideError();
+  setLoading(true);
+  els.compareBar.hidden = true;
+  els.resultsMeta.textContent = "Ответы поставщиков на ваши заявки";
+  try {
+    if (!isLoggedIn()) {
+      els.loading.hidden = true;
+      els.empty.hidden = true;
+      els.results.innerHTML =
+        '<div class="empty"><h2>Войдите в аккаунт</h2><p>Ответы поставщиков доступны после входа.</p><button type="button" class="btn btn--primary" id="incoming-login">Войти</button></div>';
+      document.getElementById("incoming-login")?.addEventListener("click", () =>
+        openAuthModal("login", { audience: "buyer" })
+      );
+      setLoading(false);
+      return;
+    }
+    const list = await api("/api/my/incoming-proposals");
+    state.incomingProposals = list;
+    setLoading(false);
+    els.loading.hidden = true;
+    if (!list.length) {
+      els.empty.hidden = false;
+      els.empty.querySelector("h2").textContent = "Ответов пока нет";
+      els.empty.querySelector("p").textContent =
+        "Когда поставщик ответит на вашу заявку, предложение появится здесь.";
+      els.results.innerHTML = "";
+      return;
+    }
+    els.empty.hidden = true;
+    els.results.className = "results results--proposals-list";
+    els.results.innerHTML = list.map(renderIncomingProposalCard).join("");
+  } catch (err) {
+    setLoading(false);
+    els.loading.hidden = true;
+    showError(err.message);
+  }
+}
+
 async function renderOrders() {
   hideError();
   setLoading(true);
@@ -683,12 +1180,13 @@ async function renderOrders() {
       return;
     }
     els.empty.hidden = true;
+    els.results.className = "results";
     els.results.innerHTML = orders
       .map(
         (o) => `
       <article class="supplier-card order-card" data-order-id="${o.id}">
         <h3 class="supplier-card__title">Заказ №${o.id} · ${escapeHtml(o.supplierName)}</h3>
-        <p class="supplier-card__meta">${formatDate(o.createdAt)} · ${statusLabel(o.status)} · <strong>${formatMoney(o.totalAmount)} ₽</strong></p>
+        <p class="supplier-card__meta">${formatDate(o.createdAt)} · ${orderStatusLabel(o.status)} · <strong>${formatMoney(o.totalAmount)} ₽</strong></p>
         <div class="supplier-card__actions">
           <button type="button" class="btn btn--sm btn--ghost" data-order-view="${o.id}">Подробнее</button>
           ${
@@ -708,12 +1206,6 @@ async function renderOrders() {
 function formatDate(val) {
   const d = new Date(val);
   return Number.isNaN(d.getTime()) ? String(val) : d.toLocaleString("ru-RU");
-}
-
-function statusLabel(status) {
-  if (status === "confirmed") return "Подтверждён";
-  if (status === "cancelled") return "Отменён";
-  return "Ожидает";
 }
 
 async function renderComparePanel() {
@@ -739,7 +1231,7 @@ async function renderComparePanel() {
       ? `<ul class="compare-winner__reasons">
           ${best._score.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join("")}
          </ul>`
-      : `<p class="compare-winner__empty">Уточните фильтры (регион, объём), чтобы увидеть аргументы.</p>`;
+      : `<p class="compare-winner__empty">Уточните фильтры (город, объём), чтобы увидеть аргументы.</p>`;
 
     const others = items
       .filter((s) => s.id !== best.id)
@@ -793,22 +1285,44 @@ function toggleCompare(id) {
   renderResults();
 }
 
+async function toggleSupplierFavorite(id) {
+  if (!canUseBuyerFeatures()) {
+    if (!isLoggedIn()) promptBuyerAuth(true);
+    else {
+      openAuthModal("login", { audience: "buyer", message: "Избранное доступно покупателям." });
+    }
+    return;
+  }
+  if (!state.favoritesStore) {
+    state.favoritesStore = createFavoritesStore("supplier");
+    await state.favoritesStore.load();
+  }
+  try {
+    await state.favoritesStore.toggle(id);
+    if (state.view === "favorites") await renderBuyerFavorites();
+    else renderResults();
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
 function readFiltersFromForm() {
   state.category = els.category.value;
-  state.region = els.region.value;
+  state.city = els.city.value;
   state.query = els.query.value;
+  state.organization = els.organization?.value || "";
   state.budgetKg = els.budget.value;
   state.sort = els.sort.value;
 }
 
 async function initMeta() {
-  const [categories, regions] = await Promise.all([
+  const [categories, cities] = await Promise.all([
     api("/api/categories"),
-    api("/api/regions"),
+    api("/api/cities"),
   ]);
 
   state.categories = categories;
-  state.regions = regions;
+  state.cities = cities;
 
   categories.forEach((c) => {
     const opt = document.createElement("option");
@@ -817,15 +1331,18 @@ async function initMeta() {
     els.category.appendChild(opt);
   });
 
-  regions.forEach((r) => {
+  cities.forEach((c) => {
     const opt = document.createElement("option");
-    opt.value = r;
-    opt.textContent = r;
-    els.region.appendChild(opt);
+    opt.value = c;
+    opt.textContent = c;
+    els.city.appendChild(opt);
   });
 
+  populateAdminBuyerFilterOptions();
+
   const params = new URLSearchParams(location.search);
-  if (params.get("region")) els.region.value = params.get("region");
+  if (params.get("city")) els.city.value = params.get("city");
+  else if (params.get("region")) els.city.value = params.get("region");
   if (params.get("category")) els.category.value = params.get("category");
   readFiltersFromForm();
 }
@@ -854,7 +1371,45 @@ function bindEvents() {
     }
   });
 
+  const applyAdminBuyersFilters = () => {
+    readAdminBuyerFiltersFromForm();
+    if (state.view === "buyers-catalog") {
+      if (state.adminBuyersAll.length) {
+        renderAdminBuyersList(sortAdminBuyers(filterAdminBuyers(state.adminBuyersAll)));
+      } else {
+        renderAdminBuyersCatalog();
+      }
+    }
+  };
+
+  els.adminBuyersSearchForm?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    applyAdminBuyersFilters();
+  });
+  els.adminBuyersSearchForm?.addEventListener("change", applyAdminBuyersFilters);
+  els.adminBuyersSearchForm?.addEventListener("input", (e) => {
+    if (e.target.matches("input")) applyAdminBuyersFilters();
+  });
+  document.getElementById("reset-admin-buyers-filters")?.addEventListener("click", () => {
+    els.adminBuyersSearchForm?.reset();
+    applyAdminBuyersFilters();
+  });
+
   els.results.addEventListener("click", (e) => {
+    const adminBuyerId = e.target.closest("[data-admin-buyer-open]")?.dataset.adminBuyerOpen;
+    if (adminBuyerId && isAdminAccount()) {
+      const buyer = state.adminBuyers?.find((b) => String(b.id) === String(adminBuyerId));
+      if (buyer) openAdminBuyerPanel(buyer);
+      return;
+    }
+    const incomingBtn = e.target.closest("[data-incoming-proposal-open]");
+    if (incomingBtn) {
+      const proposal = state.incomingProposals.find(
+        (p) => p.id === Number(incomingBtn.dataset.incomingProposalOpen)
+      );
+      if (proposal) openIncomingProposalPanel(proposal);
+      return;
+    }
     const orderViewBtn = e.target.closest("[data-order-view]");
     if (orderViewBtn) {
       openOrderPanel(orderViewBtn.dataset.orderView);
@@ -868,6 +1423,7 @@ function bindEvents() {
 
     const card = e.target.closest(".supplier-card");
     if (!card) return;
+    if (isAdminAccount() && state.view === "buyers-catalog") return;
     const id = card.dataset.id;
     const action = e.target.closest("[data-action]")?.dataset.action;
     if (action === "deal") {
@@ -875,6 +1431,11 @@ function bindEvents() {
       return;
     }
     if (action === "detail") openDetail(id);
+    const favBtn = e.target.closest("[data-favorite-id]");
+    if (favBtn) {
+      toggleSupplierFavorite(favBtn.dataset.favoriteId);
+      return;
+    }
     if (action === "compare") {
       if (!canUseBuyerFeatures()) {
         if (!isLoggedIn()) promptBuyerAuth(true);
@@ -891,6 +1452,12 @@ function bindEvents() {
   });
 
   els.recommendation?.addEventListener("click", (e) => {
+    const adminBuyerId = e.target.closest("[data-admin-buyer-open]")?.dataset.adminBuyerOpen;
+    if (adminBuyerId && isAdminAccount()) {
+      const buyer = state.adminBuyers?.find((b) => String(b.id) === String(adminBuyerId));
+      if (buyer) openAdminBuyerPanel(buyer);
+      return;
+    }
     const id = e.target.closest("[data-id]")?.dataset.id;
     if (id) openDetail(id);
   });
@@ -915,7 +1482,13 @@ function bindEvents() {
     if (e.key === "Escape") closeAllPanels();
   });
 
-  els.panelDetail?.addEventListener("click", (e) => {
+  els.panelDetail?.addEventListener("click", async (e) => {
+    const favBtn = e.target.closest("[data-favorite-id]");
+    if (favBtn) {
+      await toggleSupplierFavorite(favBtn.dataset.favoriteId);
+      openDetail(favBtn.dataset.favoriteId);
+      return;
+    }
     const btn = e.target.closest("[data-action='compare-detail']");
     if (btn) {
       toggleCompare(btn.dataset.id);
@@ -934,9 +1507,20 @@ function bindEvents() {
             message:
               view === "demands"
                 ? "Чтобы публиковать запросы, войдите в аккаунт покупателя."
-                : "Чтобы пользоваться разделом, войдите в аккаунт покупателя.",
+                : view === "incoming-proposals"
+                  ? "Чтобы смотреть ответы поставщиков, войдите в аккаунт покупателя."
+                  : view === "favorites"
+                    ? "Чтобы смотреть избранное, войдите в аккаунт покупателя."
+                    : "Чтобы пользоваться разделом, войдите в аккаунт покупателя.",
           });
         }
+        return;
+      }
+      if (view === "buyers-catalog") {
+        if (!isAdminAccount()) return;
+        state.view = "buyers-catalog";
+        els.navTabs.forEach((t) => t.classList.toggle("is-active", t === tab));
+        renderResults();
         return;
       }
       if (view === "list") {
@@ -963,26 +1547,41 @@ function bindEvents() {
   });
 }
 
-const BUYER_ONLY_VIEWS = ["orders", "demands"];
+const BUYER_ONLY_VIEWS = ["orders", "demands", "incoming-proposals", "favorites"];
 
-function applyReadOnlyUi() {
+function applyBuyerNavVisibility() {
   const isBuyerAccount = canUseBuyerFeatures();
+  const isAdmin = isAdminAccount();
+  const catalogTab = document.getElementById("buyer-tab-catalog");
+  const buyersCatalogTab = document.getElementById("buyer-tab-buyers-catalog");
   const ordersTab = document.getElementById("buyer-tab-orders");
   const demandsTab = document.getElementById("buyer-tab-demands");
-  if (ordersTab) ordersTab.hidden = !isBuyerAccount;
-  if (demandsTab) demandsTab.hidden = !isBuyerAccount;
+  const incomingTab = document.getElementById("buyer-tab-incoming-proposals");
+  const favoritesTab = document.getElementById("buyer-tab-favorites");
+  if (catalogTab) catalogTab.textContent = isAdmin ? "Каталог поставщиков" : "Каталог";
+  const hidePersonalTabs = !isBuyerAccount || isAdmin;
+  if (ordersTab) ordersTab.hidden = hidePersonalTabs;
+  if (demandsTab) demandsTab.hidden = hidePersonalTabs;
+  if (incomingTab) incomingTab.hidden = hidePersonalTabs;
+  if (favoritesTab) favoritesTab.hidden = hidePersonalTabs;
+  if (buyersCatalogTab) buyersCatalogTab.hidden = !isAdmin;
 
   els.navTabs.forEach((tab) => {
     if (tab.dataset.view === "list") {
-      tab.hidden = false;
+      tab.hidden = !isBuyerAccount && !isAdmin;
+    } else if (tab.dataset.view === "buyers-catalog") {
+      tab.hidden = !isAdmin;
+    } else if (BUYER_ONLY_VIEWS.includes(tab.dataset.view)) {
+      tab.hidden = hidePersonalTabs;
     } else {
-      tab.hidden = state.readOnly || !isBuyerAccount;
+      tab.hidden = !isBuyerAccount;
     }
   });
 
-  const needCatalog = state.readOnly && BUYER_ONLY_VIEWS.includes(state.view);
-  const needBuyerLogin = !isBuyerAccount && BUYER_ONLY_VIEWS.includes(state.view);
-  if (needCatalog || needBuyerLogin) {
+  if (!isBuyerAccount && BUYER_ONLY_VIEWS.includes(state.view)) {
+    goToBuyerCatalog();
+  }
+  if (!isAdmin && state.view === "buyers-catalog") {
     goToBuyerCatalog();
   }
 }
@@ -994,25 +1593,31 @@ function goToBuyerCatalog() {
   renderResults();
 }
 
-export async function initBuyerApp(options = {}) {
-  state.readOnly = Boolean(options.readOnly);
+export async function initBuyerApp() {
   closeAllPanels();
   bindEvents();
-  applyReadOnlyUi();
+  applyBuyerNavVisibility();
   renderCompareBar();
   try {
+    if (canUseBuyerFeatures()) {
+      state.favoritesStore = createFavoritesStore("supplier");
+      await state.favoritesStore.load();
+    }
     await initMeta();
-    await maybeShowQuickSetup(state.readOnly ? "viewer" : "buyer", {
-      categories: state.categories,
-      regions: state.regions,
-      fetchSuggestions: () => api("/api/suppliers?sort=rating"),
-      applyFilters: (f) => {
-        if (f.category != null) els.category.value = f.category;
-        if (f.region != null) els.region.value = f.region;
-        if (f.query != null) els.query.value = f.query;
-        readFiltersFromForm();
-      },
-    });
+    if (!isAdminAccount()) {
+      await maybeShowQuickSetup("buyer", {
+        categories: state.categories,
+        cities: state.cities,
+        fetchSuggestions: () => api("/api/suppliers?sort=rating"),
+        applyFilters: (f) => {
+          if (f.category != null) els.category.value = f.category;
+          if (f.city != null) els.city.value = f.city;
+          else if (f.region != null) els.city.value = f.region;
+          if (f.query != null) els.query.value = f.query;
+          readFiltersFromForm();
+        },
+      });
+    }
     await renderResults();
   } catch (err) {
     showError(

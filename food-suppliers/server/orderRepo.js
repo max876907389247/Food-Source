@@ -139,6 +139,92 @@ export async function cancelOrder(orderId, userId) {
   return getOrderById(orderId, userId);
 }
 
+function mapSellerOrderRow(order, items = null) {
+  const mapped = {
+    id: order.id,
+    status: order.status,
+    totalAmount: Number(order.total_amount),
+    note: order.note,
+    createdAt: order.created_at,
+    buyer: {
+      organizationName: order.buyer_org || null,
+      username: order.buyer_username || null,
+      city: order.buyer_city || null,
+      region: order.buyer_region || null,
+      contacts: {
+        phone: order.buyer_phone || "",
+        email: order.buyer_email || "",
+      },
+    },
+  };
+  if (items) {
+    mapped.items = items.map((i) => ({
+      productId: i.product_id,
+      productName: i.product_name,
+      unit: i.unit,
+      quantity: Number(i.quantity),
+      unitPrice: Number(i.unit_price),
+      lineTotal: Number(i.line_total),
+    }));
+  }
+  return mapped;
+}
+
+const SELLER_ORDER_SELECT = `
+  SELECT o.id, o.status, o.total_amount, o.note, o.created_at,
+    u.organization_name AS buyer_org, u.username AS buyer_username,
+    u.city AS buyer_city, u.region AS buyer_region,
+    u.contact_phone AS buyer_phone, u.contact_email AS buyer_email`;
+
+export async function listOrdersForSupplier(supplierId) {
+  const rows = await query(
+    `${SELLER_ORDER_SELECT}
+     FROM orders o
+     JOIN users u ON u.id = o.user_id
+     WHERE o.supplier_id = ?
+     ORDER BY o.created_at DESC`,
+    [supplierId]
+  );
+  return rows.map((r) => mapSellerOrderRow(r));
+}
+
+export async function updateOrderStatusForSupplier(orderId, supplierId, newStatus) {
+  if (!["confirmed", "cancelled"].includes(newStatus)) {
+    throw new Error("Укажите статус: confirmed или cancelled");
+  }
+  const rows = await query(
+    "SELECT status FROM orders WHERE id = ? AND supplier_id = ?",
+    [orderId, supplierId]
+  );
+  if (!rows.length) throw new Error("Предложение не найдено");
+  if (rows[0].status !== "pending") {
+    throw new Error("Статус этого предложения уже изменён");
+  }
+  await query("UPDATE orders SET status = ? WHERE id = ? AND supplier_id = ?", [
+    newStatus,
+    orderId,
+    supplierId,
+  ]);
+  return getOrderByIdForSupplier(orderId, supplierId);
+}
+
+export async function getOrderByIdForSupplier(orderId, supplierId) {
+  const rows = await query(
+    `${SELLER_ORDER_SELECT}
+     FROM orders o
+     JOIN users u ON u.id = o.user_id
+     WHERE o.id = ? AND o.supplier_id = ?`,
+    [orderId, supplierId]
+  );
+  if (!rows.length) return null;
+  const items = await query(
+    `SELECT product_id, product_name, unit, quantity, unit_price, line_total
+     FROM order_items WHERE order_id = ?`,
+    [orderId]
+  );
+  return mapSellerOrderRow(rows[0], items);
+}
+
 export async function listOrdersForUser(userId) {
   const rows = await query(
     `SELECT o.id, o.supplier_id, o.status, o.total_amount, o.created_at, s.name AS supplier_name

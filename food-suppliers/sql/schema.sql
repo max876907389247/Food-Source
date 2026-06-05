@@ -24,7 +24,7 @@ CREATE TABLE users (
   username VARCHAR(64) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   role ENUM('user', 'admin') NOT NULL DEFAULT 'user',
-  audience ENUM('buyer', 'seller', 'viewer') NOT NULL DEFAULT 'buyer',
+  audience ENUM('buyer', 'seller') NOT NULL DEFAULT 'buyer',
   organization_name VARCHAR(200) NULL,
   city VARCHAR(120) NULL,
   region VARCHAR(120) NULL,
@@ -122,6 +122,18 @@ CREATE TABLE buyer_demands (
   INDEX idx_buyer_demands_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE favorites (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id INT UNSIGNED NOT NULL,
+  target_type ENUM('supplier', 'buyer_demand') NOT NULL,
+  target_id VARCHAR(64) NOT NULL,
+  created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_favorites_user_target (user_id, target_type, target_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_favorites_user_type (user_id, target_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE supply_proposals (
   id INT UNSIGNED NOT NULL AUTO_INCREMENT,
   seller_user_id INT UNSIGNED NOT NULL,
@@ -129,6 +141,9 @@ CREATE TABLE supply_proposals (
   message TEXT NOT NULL,
   price_offer VARCHAR(120) NULL,
   volume_offer VARCHAR(120) NULL,
+  line_items JSON NULL,
+  offer_total DECIMAL(12, 2) NULL,
+  status ENUM('pending', 'accepted', 'rejected') NOT NULL DEFAULT 'pending',
   created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),

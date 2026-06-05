@@ -721,6 +721,12 @@ a.btn--admin-panel:hover {
   gap: 0.75rem;
 }
 
+.compare-bar__hint {
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.72);
+  flex: 1;
+}
+
 .compare-bar__chips {
   display: flex;
   flex-wrap: wrap;
@@ -1044,8 +1050,31 @@ a.btn--admin-panel:hover {
   border-color: rgba(255, 255, 255, 0.85);
 }
 
+.btn--favorite.btn--active {
+  color: #b8860b;
+  border-color: #d4a017;
+}
+
 .compare-bar .btn--primary {
-  color: var(--text);
+  background: #fff;
+  color: var(--accent);
+  border-color: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.compare-bar .btn--primary:hover:not(:disabled) {
+  background: #f4f7f4;
+  color: var(--accent-hover);
+  border-color: #f4f7f4;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+}
+
+.compare-bar .btn--primary:disabled {
+  background: rgba(255, 255, 255, 0.28);
+  color: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.35);
+  opacity: 1;
+  box-shadow: none;
 }
 
 .compare-table-wrap {
@@ -1068,6 +1097,10 @@ a.btn--admin-panel:hover {
 @media (max-width: 900px) {
   .content__grid {
     grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    display: none;
   }
 
   .search-card__grid {
@@ -1353,6 +1386,27 @@ a.btn--admin-panel:hover {
 }
 
 /* Выбор роли */
+.header-account {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.65rem;
+  min-width: 0;
+  max-width: min(100%, 28rem);
+}
+
+.header-org-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 16rem;
+}
+
 .audience-badge {
   font-size: 0.75rem;
   font-weight: 700;
@@ -1668,6 +1722,12 @@ a.btn--admin-panel:hover {
   max-width: 42rem;
 }
 
+.results--proposals-list {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+}
+
 .proposal-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -1681,6 +1741,24 @@ a.btn--admin-panel:hover {
   align-items: flex-start;
   gap: 1rem;
   margin-bottom: 0.35rem;
+}
+
+.proposal-card__head-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+}
+
+.proposal-card__products {
+  margin: 0 0 0.75rem;
+  padding-left: 1.1rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.proposal-card__products li + li {
+  margin-top: 0.2rem;
 }
 
 .proposal-card__title {
@@ -1736,6 +1814,23 @@ a.btn--admin-panel:hover {
   margin-bottom: 1rem;
 }
 
+.proposal-status-block {
+  margin-bottom: 0.85rem;
+}
+
+.proposal-status-block__text {
+  margin: 0.45rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.proposal-status-block__lock {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--text);
+}
+
 .proposal-form {
   display: flex;
   flex-direction: column;
@@ -1759,6 +1854,30 @@ a.btn--admin-panel:hover {
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+}
+
+.proposal-offer-block {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.proposal-offer-block__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.proposal-budget-warning {
+  margin: 0.5rem 0 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: rgba(220, 80, 40, 0.12);
+  color: #a33b12;
+  font-size: 0.9rem;
 }
 
 .proposal-success {
@@ -1876,6 +1995,7 @@ a.btn--admin-panel:hover {
   color: var(--err);
 }
 
+.product-manage-card__facts,
 .demand-manage-card__facts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1884,12 +2004,14 @@ a.btn--admin-panel:hover {
   font-size: 0.875rem;
 }
 
+.product-manage-card__facts dt,
 .demand-manage-card__facts dt {
   font-size: 0.7rem;
   text-transform: uppercase;
   color: var(--text-muted);
 }
 
+.product-manage-card__facts dd,
 .demand-manage-card__facts dd {
   margin: 0;
 }

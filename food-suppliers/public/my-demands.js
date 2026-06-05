@@ -1,28 +1,61 @@
 import { api } from "./auth.js";
+import {
+  formatDemandBudget,
+  formatDemandVolume,
+  parseDemandBudgetInput,
+  parseDemandVolumeInput,
+} from "./proposals-shared.js";
 import { escapeHtml } from "./ui.js";
 
+function demandVolumeForDisplay(d) {
+  if (d.volumeKg != null && d.volumeKg !== "") return formatDemandVolume(d.volumeKg);
+  return d.volumeText ? escapeHtml(d.volumeText) : "—";
+}
+
+function demandBudgetForDisplay(d) {
+  const rub = parseDemandBudgetInput(d.budgetText);
+  if (rub != null) return formatDemandBudget(rub);
+  return d.budgetText ? escapeHtml(d.budgetText) : "—";
+}
+
+function demandVolumeInputValue(demand) {
+  if (demand?.volumeKg != null && demand.volumeKg !== "") return demand.volumeKg;
+  const parsed = parseDemandVolumeInput(demand?.volumeText);
+  return parsed != null ? parsed : "";
+}
+
+function demandBudgetInputValue(demand) {
+  const parsed = parseDemandBudgetInput(demand?.budgetText);
+  return parsed != null ? parsed : "";
+}
+
 function renderDemandRow(d) {
-  const status = d.isActive ? '<span class="badge badge--ok">Активен</span>' : '<span class="badge badge--muted">Снят</span>';
+  const status = d.isFulfilled
+    ? '<span class="badge badge--ok">Предложение принято</span>'
+    : d.isActive
+      ? '<span class="badge badge--ok">Активен</span>'
+      : '<span class="badge badge--muted">Снят</span>';
+  const actions = d.isFulfilled
+    ? '<p class="demand-manage-card__note muted">Запрос закрыт и скрыт из общего списка предложений для поставщиков.</p>'
+    : `<button type="button" class="btn btn--ghost btn--sm" data-edit-demand="${d.id}">Изменить</button>
+        ${
+          d.isActive
+            ? `<button type="button" class="btn btn--ghost btn--sm" data-delete-demand="${d.id}">Снять с публикации</button>`
+            : `<button type="button" class="btn btn--primary btn--sm" data-restore-demand="${d.id}">Вернуть публикацию</button>`
+        }`;
   return `
     <article class="demand-manage-card" data-demand-id="${d.id}">
       <div class="demand-manage-card__head">
         <h3>${escapeHtml(d.companyName)}</h3>
         ${status}
       </div>
-      <p class="demand-manage-card__meta">${escapeHtml(d.city)} · ${escapeHtml(d.region)}${d.categoryLabel ? ` · ${escapeHtml(d.categoryLabel)}` : ""}</p>
+      <p class="demand-manage-card__meta">${escapeHtml(d.city)}${d.categoryLabel ? ` · ${escapeHtml(d.categoryLabel)}` : ""}</p>
       <p class="demand-manage-card__desc">${escapeHtml(d.description)}</p>
       <dl class="demand-manage-card__facts">
-        <div><dt>Объём</dt><dd>${escapeHtml(d.volumeText)}</dd></div>
-        <div><dt>Бюджет</dt><dd>${d.budgetText ? escapeHtml(d.budgetText) : "—"}</dd></div>
+        <div><dt>Объём</dt><dd>${demandVolumeForDisplay(d)}</dd></div>
+        <div><dt>Бюджет</dt><dd>${demandBudgetForDisplay(d)}</dd></div>
       </dl>
-      <div class="demand-manage-card__actions">
-        <button type="button" class="btn btn--ghost btn--sm" data-edit-demand="${d.id}">Изменить</button>
-        ${
-          d.isActive
-            ? `<button type="button" class="btn btn--ghost btn--sm" data-delete-demand="${d.id}">Снять с публикации</button>`
-            : `<button type="button" class="btn btn--primary btn--sm" data-restore-demand="${d.id}">Вернуть публикацию</button>`
-        }
-      </div>
+      <div class="demand-manage-card__actions">${actions}</div>
     </article>`;
 }
 
@@ -49,10 +82,6 @@ function demandFormHtml(categories, demand = null, user = null) {
         <input name="city" required value="${demand ? escapeHtml(demand.city) : escapeHtml(user?.city || "")}">
       </label>
       <label class="field">
-        <span class="field__label">Регион</span>
-        <input name="region" required value="${demand ? escapeHtml(demand.region) : escapeHtml(user?.region || "")}">
-      </label>
-      <label class="field">
         <span class="field__label">Категория закупки</span>
         <select name="categoryId">
           <option value="">—</option>
@@ -60,16 +89,14 @@ function demandFormHtml(categories, demand = null, user = null) {
         </select>
       </label>
       <label class="field">
-        <span class="field__label">Объём (текст)</span>
-        <input name="volumeText" required value="${demand ? escapeHtml(demand.volumeText) : ""}" placeholder="до 80 кг/нед">
+        <span class="field__label">Объём (кг)</span>
+        <input name="volumeKg" type="number" min="0" step="any" required value="${demand ? demandVolumeInputValue(demand) : ""}" placeholder="500">
+        <span class="field__hint">В списке отобразится как «до … кг»</span>
       </label>
       <label class="field">
-        <span class="field__label">Объём (кг, необязательно)</span>
-        <input name="volumeKg" type="number" min="0" value="${demand?.volumeKg ?? ""}">
-      </label>
-      <label class="field">
-        <span class="field__label">Бюджет</span>
-        <input name="budgetText" value="${demand?.budgetText ? escapeHtml(demand.budgetText) : ""}">
+        <span class="field__label">Бюджет (₽)</span>
+        <input name="budgetRub" type="number" min="0" step="any" required value="${demand ? demandBudgetInputValue(demand) : ""}" placeholder="50000">
+        <span class="field__hint">В списке отобразится как «до … ₽»</span>
       </label>
       <label class="field field--wide">
         <span class="field__label">Описание запроса</span>
@@ -122,15 +149,25 @@ export function initMyDemands({ categories, user, onChanged }) {
       const err = formWrap.querySelector("#demand-form-error");
       err.hidden = true;
       const fd = new FormData(form);
+      const volumeKg = parseDemandVolumeInput(fd.get("volumeKg"));
+      const budgetRub = parseDemandBudgetInput(fd.get("budgetRub"));
+      if (volumeKg == null) {
+        err.textContent = "Укажите объём в кг";
+        err.hidden = false;
+        return;
+      }
+      if (budgetRub == null) {
+        err.textContent = "Укажите бюджет";
+        err.hidden = false;
+        return;
+      }
       const payload = {
         companyName: fd.get("companyName"),
         businessType: fd.get("businessType"),
         city: fd.get("city"),
-        region: fd.get("region"),
         categoryId: fd.get("categoryId") || null,
-        volumeText: fd.get("volumeText"),
-        volumeKg: fd.get("volumeKg") || null,
-        budgetText: fd.get("budgetText"),
+        volumeKg,
+        budgetRub,
         description: fd.get("description"),
         contactPhone: fd.get("contactPhone"),
         contactEmail: fd.get("contactEmail"),

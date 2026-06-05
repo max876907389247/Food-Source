@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "./auth.js";
 import { query } from "./db.js";
 import { mapSupplierRow, SUPPLIER_SELECT } from "./mapSupplier.js";
+import { listCities } from "./cities.js";
 import { scoreSupplier } from "./scoring.js";
 import { resolveProductPrice } from "./priceUtils.js";
 
@@ -68,8 +69,13 @@ router.get("/api/regions", async (_req, res) => {
   res.json(rows.map((r) => r.name));
 });
 
+router.get("/api/cities", async (_req, res) => {
+  res.json(await listCities());
+});
+
 router.get("/api/suppliers", async (req, res) => {
-  const { category, region, q, budgetKg, sort = "score", ids } = req.query;
+  const { category, city, region, org, q, budgetKg, sort = "score", ids } = req.query;
+  const filterCity = city || region || "";
 
   let sql = `${SUPPLIER_SELECT} WHERE 1=1`;
   const params = [];
@@ -93,20 +99,21 @@ router.get("/api/suppliers", async (req, res) => {
     params.push(category);
   }
 
-  if (region) {
-    sql += ` AND EXISTS (
-      SELECT 1 FROM supplier_regions sr2
-      JOIN regions r2 ON r2.id = sr2.region_id
-      WHERE sr2.supplier_id = s.id
-        AND (r2.name = ? OR r2.name = 'Вся Россия')
-    )`;
-    params.push(region);
+  if (filterCity) {
+    sql += " AND s.city = ?";
+    params.push(filterCity);
+  }
+
+  if (org) {
+    const orgLike = `%${String(org).trim().toLowerCase()}%`;
+    sql += " AND LOWER(s.name) LIKE ?";
+    params.push(orgLike);
   }
 
   if (q) {
     const like = `%${q.trim().toLowerCase()}%`;
     sql += ` AND (
-      LOWER(s.name) LIKE ? OR LOWER(s.description) LIKE ? OR LOWER(s.price_hint) LIKE ?
+      LOWER(s.description) LIKE ? OR LOWER(s.price_hint) LIKE ?
       OR LOWER(s.city) LIKE ?
       OR EXISTS (
         SELECT 1 FROM products p
@@ -114,7 +121,7 @@ router.get("/api/suppliers", async (req, res) => {
           AND (LOWER(p.name) LIKE ? OR LOWER(p.description) LIKE ?)
       )
     )`;
-    params.push(like, like, like, like, like, like);
+    params.push(like, like, like, like, like);
   }
 
   sql += " GROUP BY s.id";
@@ -123,7 +130,7 @@ router.get("/api/suppliers", async (req, res) => {
   let list = rows.map(rowToSupplier);
   list = await attachProducts(list);
 
-  const filters = { region: region || "", budgetKg: budgetKg || "" };
+  const filters = { city: filterCity, budgetKg: budgetKg || "" };
   list = list.map((s) => ({
     ...s,
     _score: scoreSupplier(s, filters),
@@ -153,7 +160,7 @@ router.get("/api/suppliers/:id", requireAuth, async (req, res) => {
 
   const [supplier] = await attachProducts([rowToSupplier(rows[0])]);
   const filters = {
-    region: req.query.region || "",
+    city: req.query.city || req.query.region || "",
     budgetKg: req.query.budgetKg || "",
   };
   supplier._score = scoreSupplier(supplier, filters);

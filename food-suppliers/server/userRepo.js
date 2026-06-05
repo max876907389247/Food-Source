@@ -5,7 +5,6 @@ const USERNAME_RE = /^[a-zA-Z0-9_]{3,32}$/;
 
 export function normalizeAudience(audience) {
   if (audience === "seller") return "seller";
-  if (audience === "viewer") return "viewer";
   return "buyer";
 }
 
@@ -44,17 +43,20 @@ export function validatePassword(password, minLen = 4) {
 }
 
 export function validateOrganization(audience, org = {}) {
-  const a = normalizeAudience(audience);
-  if (a === "viewer") return null;
-
   const name = String(org.organizationName || "").trim();
   const city = String(org.city || "").trim();
-  const region = String(org.region || "").trim();
 
   if (!name) return "Укажите название организации";
   if (name.length < 2) return "Название организации слишком короткое";
   if (!city) return "Укажите город";
-  if (!region) return "Укажите регион";
+  return null;
+}
+
+export function validateOrgAccountFields(role, audience, org = {}) {
+  if (role === "admin") return null;
+  const orgErr = validateOrganization(audience, org);
+  if (orgErr) return orgErr;
+  if (!String(org.contactPhone || "").trim()) return "Укажите телефон";
   return null;
 }
 
@@ -96,10 +98,11 @@ export async function createUser({
   }
 
   const accountAudience = normalizeAudience(audience);
-  const orgErr = validateOrganization(accountAudience, {
+  const orgErr = validateOrgAccountFields(role, accountAudience, {
     organizationName,
     city,
     region,
+    contactPhone,
   });
   if (orgErr) throw new Error(orgErr);
 
@@ -107,9 +110,9 @@ export async function createUser({
   if (existing) throw new Error("Пользователь с таким логином уже существует");
 
   const orgName =
-    accountAudience === "viewer" ? null : String(organizationName || "").trim();
-  const orgCity = accountAudience === "viewer" ? null : String(city || "").trim();
-  const orgRegion = accountAudience === "viewer" ? null : String(region || "").trim();
+    role === "admin" ? String(organizationName || "").trim() || null : String(organizationName || "").trim();
+  const orgCity = role === "admin" ? String(city || "").trim() || null : String(city || "").trim();
+  const orgRegion = orgCity;
   const phone = String(contactPhone || "").trim() || null;
   const email = String(contactEmail || "").trim() || null;
 
@@ -126,9 +129,44 @@ export async function createUser({
   return getUserById(insertId);
 }
 
-export async function updateUser(id, { username, password, role }) {
+export async function updateUser(
+  id,
+  {
+    username,
+    password,
+    role,
+    audience,
+    organizationName,
+    city,
+    region,
+    contactPhone,
+    contactEmail,
+  } = {}
+) {
   const user = await getUserById(id);
   if (!user) throw new Error("Пользователь не найден");
+
+  const nextRole = role !== undefined ? role : user.role;
+  const nextAudience = audience !== undefined ? normalizeAudience(audience) : user.audience;
+  const nextOrg = {
+    organizationName:
+      organizationName !== undefined ? organizationName : user.organizationName,
+    city: city !== undefined ? city : user.city,
+    region: region !== undefined ? region : user.region,
+    contactPhone: contactPhone !== undefined ? contactPhone : user.contactPhone,
+  };
+
+  if (
+    organizationName !== undefined ||
+    city !== undefined ||
+    region !== undefined ||
+    contactPhone !== undefined ||
+    role !== undefined ||
+    audience !== undefined
+  ) {
+    const orgErr = validateOrgAccountFields(nextRole, nextAudience, nextOrg);
+    if (orgErr) throw new Error(orgErr);
+  }
 
   const fields = [];
   const params = [];
@@ -150,6 +188,33 @@ export async function updateUser(id, { username, password, role }) {
     }
     fields.push("role = ?");
     params.push(role);
+  }
+
+  if (audience !== undefined) {
+    fields.push("audience = ?");
+    params.push(nextAudience);
+  }
+
+  if (organizationName !== undefined) {
+    fields.push("organization_name = ?");
+    params.push(String(organizationName || "").trim() || null);
+  }
+  if (city !== undefined) {
+    fields.push("city = ?");
+    params.push(String(city || "").trim() || null);
+  }
+  if (region !== undefined || city !== undefined) {
+    const nextCity = city !== undefined ? String(city || "").trim() || null : user.city;
+    fields.push("region = ?");
+    params.push(nextCity);
+  }
+  if (contactPhone !== undefined) {
+    fields.push("contact_phone = ?");
+    params.push(String(contactPhone || "").trim() || null);
+  }
+  if (contactEmail !== undefined) {
+    fields.push("contact_email = ?");
+    params.push(String(contactEmail || "").trim() || null);
   }
 
   if (password && String(password).length > 0) {

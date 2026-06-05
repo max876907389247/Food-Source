@@ -1,3 +1,5 @@
+import { bindPhoneField, formatUserPhone, isCompleteUserPhone } from "./phone.js";
+
 export const auth = {
   user: null,
 };
@@ -44,7 +46,6 @@ export function getUserAudienceLabel() {
   if (!auth.user) return "";
   if (auth.user.role === "admin") return "админ";
   if (auth.user.audience === "seller") return "поставщик";
-  if (auth.user.audience === "viewer") return "наблюдатель";
   return "покупатель";
 }
 
@@ -63,10 +64,7 @@ function syncRegisterAudienceFields(modal) {
 
   const hint = form.querySelector("#register-hint");
   if (hint) {
-    if (audience === "viewer") {
-      hint.textContent =
-        "Наблюдатель: только логин и пароль. Доступен просмотр каталога поставщиков без заказов.";
-    } else if (audience === "seller") {
+    if (audience === "seller") {
       hint.textContent =
         "Поставщик: укажите данные организации. После регистрации доступен поиск покупателей.";
     } else {
@@ -159,10 +157,6 @@ export function openAuthModal(mode = "login", options = {}) {
               <input type="radio" name="accountAudience" value="seller">
               <span>Поставщик — поиск покупателей (нужны данные организации)</span>
             </label>
-            <label class="auth-account-type__option">
-              <input type="radio" name="accountAudience" value="viewer">
-              <span>Наблюдатель — только логин и пароль, просмотр без организации</span>
-            </label>
           </fieldset>
           <div id="register-org-fields">
             <label class="field">
@@ -174,12 +168,8 @@ export function openAuthModal(mode = "login", options = {}) {
               <input name="city" data-org-required placeholder="Москва">
             </label>
             <label class="field">
-              <span class="field__label">Регион</span>
-              <input name="region" data-org-required placeholder="Москва">
-            </label>
-            <label class="field">
               <span class="field__label">Телефон</span>
-              <input name="contactPhone" type="tel" placeholder="+7 …">
+              <input name="contactPhone" id="register-phone" type="tel" inputmode="tel" placeholder="+7 999-999-99-99" autocomplete="tel" data-org-required>
             </label>
             <label class="field">
               <span class="field__label">Email организации</span>
@@ -220,6 +210,8 @@ export function openAuthModal(mode = "login", options = {}) {
       radio.addEventListener("change", () => syncRegisterAudienceFields(modal));
     });
 
+    bindPhoneField(modal.querySelector("#register-phone"));
+
     modal.querySelector("#login-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
@@ -243,6 +235,12 @@ export function openAuthModal(mode = "login", options = {}) {
       errEl.hidden = true;
       try {
         const audience = fd.get("accountAudience") || "buyer";
+        const contactPhone = String(fd.get("contactPhone") || "").trim();
+        if (audience === "buyer" || audience === "seller") {
+          if (!isCompleteUserPhone(contactPhone)) {
+            throw new Error("Укажите телефон в формате +7 999-999-99-99");
+          }
+        }
         await register({
           username: fd.get("username"),
           password: fd.get("password"),
@@ -250,8 +248,7 @@ export function openAuthModal(mode = "login", options = {}) {
           audience,
           organizationName: fd.get("organizationName"),
           city: fd.get("city"),
-          region: fd.get("region"),
-          contactPhone: fd.get("contactPhone"),
+          contactPhone: contactPhone ? formatUserPhone(contactPhone) : contactPhone,
           contactEmail: fd.get("contactEmail"),
         });
         modal.hidden = true;
@@ -275,7 +272,7 @@ export function openAuthModal(mode = "login", options = {}) {
   const regHint = modal.querySelector("#auth-login-register-hint");
   const demoHint = modal.querySelector("#login-demo-hint");
   if (regHint) regHint.hidden = !options.message;
-  if (demoHint) demoHint.hidden = Boolean(options.message);
+  if (demoHint) demoHint.hidden = mode !== "login";
   const ctxMsg = modal.querySelector("#auth-context-message");
   if (ctxMsg) {
     const text = options.message || "";

@@ -20,17 +20,26 @@
           <span class="brand__icon" aria-hidden="true">🌾</span>
           <span class="brand__text">Food<strong>Source</strong></span>
         </a>
-        <span class="audience-badge" id="audience-badge">Каталог поставщиков</span>
+        <div class="header-account" id="header-account">
+          <span class="header-org-name" id="header-org-name" hidden></span>
+          <span class="audience-badge" id="audience-badge">Каталог поставщиков</span>
+        </div>
       </div>
       <div class="header__right">
         <nav class="view-tabs view-tabs--header" id="header-nav" hidden aria-label="Покупатель">
           <button type="button" class="view-tabs__btn is-active" data-view="list" id="buyer-tab-catalog">Каталог</button>
+          <button type="button" class="view-tabs__btn" data-view="buyers-catalog" id="buyer-tab-buyers-catalog" hidden>Каталог покупателей</button>
           <button type="button" class="view-tabs__btn" data-view="orders" id="buyer-tab-orders" hidden>Мои заказы</button>
           <button type="button" class="view-tabs__btn" data-view="demands" id="buyer-tab-demands" hidden>Мои запросы</button>
+          <button type="button" class="view-tabs__btn" data-view="incoming-proposals" id="buyer-tab-incoming-proposals" hidden>Ответы поставщиков</button>
+          <button type="button" class="view-tabs__btn" data-view="favorites" id="buyer-tab-favorites" hidden>Избранное</button>
         </nav>
         <nav class="view-tabs view-tabs--header" id="seller-header-nav" hidden aria-label="Поставщик">
           <button type="button" class="view-tabs__btn is-active" data-seller-view="proposals" id="seller-tab-proposals" hidden>Предложения</button>
           <button type="button" class="view-tabs__btn" data-seller-view="products" id="seller-tab-products" hidden>Мои товары</button>
+          <button type="button" class="view-tabs__btn" data-seller-view="my-responses" id="seller-tab-my-responses" hidden>Мои ответы</button>
+          <button type="button" class="view-tabs__btn" data-seller-view="incoming-orders" id="seller-tab-incoming-orders" hidden>Входящие предложения</button>
+          <button type="button" class="view-tabs__btn" data-seller-view="favorites" id="seller-tab-favorites" hidden>Избранное</button>
         </nav>
         <div class="auth-bar" id="auth-bar"></div>
       </div>
@@ -45,7 +54,7 @@
           <h1>Найдите поставщика продуктов под ваш бизнес</h1>
           <p>
             FoodSource создан для ресторанов, кафе, магазинов и отделов закупок: в одном месте
-            можно подобрать оптового поставщика по категории и региону, сравнить до трёх компаний
+            можно подобрать оптового поставщика по категории и городу, сравнить до трёх компаний
             по цене, минимальному заказу и сертификатам — и выбрать партнёра под ваш объём и сроки.
           </p>
         </div>
@@ -58,13 +67,17 @@
               </select>
             </label>
             <label class="field">
-              <span class="field__label">Город или регион</span>
-              <select id="filter-region" name="region">
-                <option value="">Любой регион</option>
+              <span class="field__label">Город</span>
+              <select id="filter-city" name="city">
+                <option value="">Любой город</option>
               </select>
             </label>
             <label class="field field--wide">
-              <span class="field__label">Поиск (поставщик или продукция)</span>
+              <span class="field__label">Наименование организации</span>
+              <input type="search" id="filter-organization" name="org" placeholder="ООО «АгроРусь»" autocomplete="off">
+            </label>
+            <label class="field field--wide">
+              <span class="field__label">Поиск по продукции</span>
               <input type="search" id="filter-query" name="q" placeholder="мука, лосось, упаковка" autocomplete="off">
             </label>
             <label class="field">
@@ -84,6 +97,63 @@
           <div class="search-card__actions">
             <button type="submit" class="btn btn--primary">Найти</button>
             <button type="button" class="btn btn--ghost" id="reset-filters">Сбросить</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="hero" id="admin-buyers-hero" hidden>
+      <div class="container hero__grid">
+        <div class="hero__copy">
+          <h1>Каталог покупателей</h1>
+          <p>
+            Заявки ресторанов, магазинов и отделов закупок на поставку продуктов.
+            Отфильтруйте по городу, категории и названию организации.
+          </p>
+        </div>
+        <form class="search-card" id="admin-buyers-search-form" aria-label="Поиск покупателей">
+          <div class="search-card__grid">
+            <label class="field">
+              <span class="field__label">Категория закупки</span>
+              <select id="admin-buyers-filter-category" name="category">
+                <option value="">Все категории</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field__label">Город покупателя</span>
+              <select id="admin-buyers-filter-city" name="city">
+                <option value="">Любой город</option>
+              </select>
+            </label>
+            <label class="field field--wide">
+              <span class="field__label">Наименование организации</span>
+              <input type="search" id="admin-buyers-filter-organization" name="org" placeholder="Кафе «Утро»" autocomplete="off">
+            </label>
+            <label class="field field--wide">
+              <span class="field__label">Поиск по описанию</span>
+              <input type="search" id="admin-buyers-filter-query" name="q" placeholder="ритейл, мука, опт…" autocomplete="off">
+            </label>
+            <label class="field">
+              <span class="field__label">Статус заявки</span>
+              <select id="admin-buyers-filter-status" name="status">
+                <option value="">Все</option>
+                <option value="active">Только активные</option>
+                <option value="inactive">Снятые с публикации</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field__label">Сортировка</span>
+              <select id="admin-buyers-filter-sort" name="sort">
+                <option value="name">По названию</option>
+                <option value="budget">По бюджету</option>
+                <option value="volume">По объёму</option>
+                <option value="newest">Сначала новые</option>
+              </select>
+            </label>
+          </div>
+          <div class="search-card__actions">
+            <button type="submit" class="btn btn--primary">Найти</button>
+            <button type="button" class="btn btn--ghost" id="reset-admin-buyers-filters">Сбросить</button>
           </div>
         </form>
       </div>
@@ -127,6 +197,7 @@
   <div class="compare-bar" id="compare-bar" hidden>
     <div class="container compare-bar__inner">
       <span class="compare-bar__label">Сравнение:</span>
+      <span class="compare-bar__hint" id="compare-hint">Добавьте 2 организации для сравнения</span>
       <div class="compare-bar__chips" id="compare-list"></div>
       <button type="button" class="btn btn--primary btn--sm" id="compare-go" disabled>Сравнить</button>
       <button type="button" class="btn btn--ghost btn--sm" id="compare-clear">Очистить</button>
@@ -142,7 +213,7 @@
           <h1>Предложения от покупателей</h1>
           <p>
             Заявки ресторанов, магазинов и отделов закупок на поставку продуктов.
-            Отфильтруйте по региону и категории, откройте карточку и ответьте своим предложением.
+            Отфильтруйте по городу и категории, откройте карточку и ответьте своим предложением.
           </p>
         </div>
         <form class="search-card" id="seller-search-form" aria-label="Поиск покупателей">
@@ -154,14 +225,18 @@
               </select>
             </label>
             <label class="field">
-              <span class="field__label">Регион покупателя</span>
-              <select id="seller-filter-region" name="region">
-                <option value="">Любой регион</option>
+              <span class="field__label">Город покупателя</span>
+              <select id="seller-filter-city" name="city">
+                <option value="">Любой город</option>
               </select>
             </label>
             <label class="field field--wide">
-              <span class="field__label">Поиск (компания, описание)</span>
-              <input type="search" id="seller-filter-query" name="q" placeholder="кафе, ритейл, мука…" autocomplete="off">
+              <span class="field__label">Наименование организации</span>
+              <input type="search" id="seller-filter-organization" name="org" placeholder="Кафе «Утро»" autocomplete="off">
+            </label>
+            <label class="field field--wide">
+              <span class="field__label">Поиск по описанию</span>
+              <input type="search" id="seller-filter-query" name="q" placeholder="ритейл, мука, опт…" autocomplete="off">
             </label>
             <label class="field">
               <span class="field__label">Сортировка</span>
@@ -192,6 +267,43 @@
       </div>
     </section>
     </div>
+    <section class="content" id="seller-incoming-orders-section" hidden>
+      <div class="container">
+        <h2 class="section-title">Входящие предложения от покупателей</h2>
+        <p class="section-lead">Покупатели отправляют предложения о сделке из каталога — здесь видны все заказы на вашу продукцию.</p>
+        <p class="results-meta" id="seller-incoming-orders-meta">Загрузка…</p>
+        <div class="state state--loading" id="seller-incoming-orders-loading">Загрузка…</div>
+        <div class="state state--error" id="seller-incoming-orders-error" hidden><h2>Ошибка</h2><p></p></div>
+        <div class="results results--proposals-list" id="seller-incoming-orders-list" role="list"></div>
+        <div class="empty" id="seller-incoming-orders-empty" hidden>
+          <h2>Предложений пока нет</h2>
+          <p>Когда покупатель отправит предложение о сделке из каталога, оно появится здесь.</p>
+        </div>
+      </div>
+    </section>
+    <section class="content" id="seller-favorites-section" hidden>
+      <div class="container">
+        <h2 class="section-title">Избранные покупатели</h2>
+        <p class="section-lead">Заявки покупателей, которые вы отметили звёздочкой.</p>
+        <p class="results-meta" id="seller-favorites-meta">Загрузка…</p>
+        <div class="state state--loading" id="seller-favorites-loading">Загрузка…</div>
+        <div class="state state--error" id="seller-favorites-error" hidden><h2>Ошибка</h2><p></p></div>
+        <div class="results results--buyers" id="seller-favorites-list" role="list"></div>
+        <div class="empty" id="seller-favorites-empty" hidden>
+          <h2>Избранного пока нет</h2>
+          <p>Нажмите «☆ В избранное» на карточке покупателя в разделе «Предложения».</p>
+        </div>
+      </div>
+    </section>
+    <div class="compare-bar" id="seller-compare-bar" hidden>
+      <div class="container compare-bar__inner">
+        <span class="compare-bar__label">Сравнение покупателей:</span>
+        <span class="compare-bar__hint" id="seller-compare-hint">Добавьте 2 организации для сравнения</span>
+        <div class="compare-bar__chips" id="seller-compare-list"></div>
+        <button type="button" class="btn btn--primary btn--sm" id="seller-compare-go" disabled>Сравнить</button>
+        <button type="button" class="btn btn--ghost btn--sm" id="seller-compare-clear">Очистить</button>
+      </div>
+    </div>
     <section class="content" id="seller-products-section" hidden>
       <div class="container">
         <h2 class="section-title">Мои товары</h2>
@@ -210,6 +322,10 @@
     <div class="panel panel--wide" id="panel-compare" role="dialog" aria-modal="true" hidden></div>
     <div class="panel" id="panel-orders" role="dialog" aria-modal="true" hidden></div>
     <div class="panel" id="panel-seller-detail" role="dialog" aria-modal="true" hidden></div>
+    <div class="panel panel--wide" id="panel-seller-responses" role="dialog" aria-modal="true" hidden></div>
+    <div class="panel" id="panel-seller-incoming-order" role="dialog" aria-modal="true" hidden></div>
+    <div class="panel panel--wide" id="panel-seller-compare" role="dialog" aria-modal="true" hidden></div>
+    <div class="panel" id="panel-incoming-proposal" role="dialog" aria-modal="true" hidden></div>
   </div>
 
   <script type="module" src="main.js"></script>

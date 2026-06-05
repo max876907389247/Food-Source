@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAdmin } from "./auth.js";
+import { listCities } from "./cities.js";
 import { query } from "./db.js";
 import { SUPPLIER_SELECT, mapSupplierRow } from "./mapSupplier.js";
 import {
@@ -11,15 +12,19 @@ import {
 import {
   deleteSupplier,
   getSupplierById,
-  insertSupplier,
   supplierPayloadFromBody,
   updateSupplier,
 } from "./supplierRepo.js";
 import {
   accountFieldsForBuyer,
   accountFieldsForSupplier,
+  buyerLoginFromDemandId,
   displayPasswordForUsername,
 } from "./demoCredentials.js";
+import {
+  deleteDemandAdmin,
+  updateDemandAdmin,
+} from "./buyerDemandRepo.js";
 import {
   createUser,
   deleteUser,
@@ -124,25 +129,6 @@ router.delete("/api/admin/products/:id", async (req, res) => {
   }
 });
 
-router.post("/api/admin/suppliers", async (req, res) => {
-  try {
-    const data = supplierPayloadFromBody(req.body);
-    if (!data.id || !data.name) {
-      res.status(400).json({ error: "Укажите id и название поставщика" });
-      return;
-    }
-    const existing = await getSupplierById(data.id);
-    if (existing) {
-      res.status(409).json({ error: "Поставщик с таким id уже существует" });
-      return;
-    }
-    const created = await insertSupplier(data);
-    res.status(201).json(created);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 router.put("/api/admin/suppliers/:id", async (req, res) => {
   try {
     const existing = await getSupplierById(req.params.id);
@@ -189,12 +175,23 @@ router.get("/api/admin/users/:id", async (req, res) => {
 
 router.post("/api/admin/users", async (req, res) => {
   try {
-    const { username, password, role = "user" } = req.body || {};
+    const body = req.body || {};
+    const { username, password } = body;
     if (!username || !password) {
       res.status(400).json({ error: "Укажите логин и пароль" });
       return;
     }
-    const user = await createUser({ username, password, role });
+    const user = await createUser({
+      username,
+      password,
+      role: body.role || "user",
+      audience: body.audience || "buyer",
+      organizationName: body.organizationName,
+      city: body.city,
+      region: body.region || body.city,
+      contactPhone: body.contactPhone,
+      contactEmail: body.contactEmail,
+    });
     res.status(201).json({
       ...user,
       displayPassword:
@@ -207,12 +204,22 @@ router.post("/api/admin/users", async (req, res) => {
 
 router.put("/api/admin/users/:id", async (req, res) => {
   try {
-    const { username, password, role } = req.body || {};
-    const user = await updateUser(req.params.id, { username, password, role });
+    const body = req.body || {};
+    const user = await updateUser(req.params.id, {
+      username: body.username,
+      password: body.password,
+      role: body.role,
+      audience: body.audience,
+      organizationName: body.organizationName,
+      city: body.city,
+      region: body.region,
+      contactPhone: body.contactPhone,
+      contactEmail: body.contactEmail,
+    });
     res.json({
       ...user,
-      displayPassword: password
-        ? displayPasswordForUsername(user.username) ?? password
+      displayPassword: body.password
+        ? displayPasswordForUsername(user.username) ?? body.password
         : displayPasswordForUsername(user.username),
     });
   } catch (err) {
@@ -231,6 +238,41 @@ router.delete("/api/admin/users/:id", async (req, res) => {
   }
 });
 
+function mapAdminBuyerRow(r) {
+  return {
+    id: r.id,
+    companyName: r.company_name,
+    city: r.city,
+    region: r.region,
+    businessType: r.business_type,
+    categoryId: r.category_id,
+    categoryLabel: r.category_label,
+    volumeText: r.volume_text,
+    volumeKg: r.volume_kg,
+    budgetText: r.budget_text,
+    description: r.description,
+    isActive: Boolean(r.is_active),
+    contacts: {
+      phone: r.contact_phone,
+      email: r.contact_email,
+    },
+    createdAt: r.created_at,
+    account: accountFieldsForBuyer(r.id, r.account_username || null),
+  };
+}
+
+async function adminBuyerRowById(demandId) {
+  const rows = await query(
+    `SELECT b.*, c.label AS category_label, u.username AS account_username
+     FROM buyer_demands b
+     LEFT JOIN categories c ON c.id = b.category_id
+     LEFT JOIN users u ON u.id = b.user_id
+     WHERE b.id = ?`,
+    [demandId]
+  );
+  return rows.length ? mapAdminBuyerRow(rows[0]) : null;
+}
+
 router.get("/api/admin/buyer-demands", async (_req, res) => {
   const rows = await query(
     `SELECT b.*, c.label AS category_label, u.username AS account_username
@@ -239,38 +281,44 @@ router.get("/api/admin/buyer-demands", async (_req, res) => {
      LEFT JOIN users u ON u.id = b.user_id
      ORDER BY b.company_name`
   );
-  res.json(
-    rows.map((r) => ({
-      id: r.id,
-      companyName: r.company_name,
-      city: r.city,
-      region: r.region,
-      businessType: r.business_type,
-      categoryId: r.category_id,
-      categoryLabel: r.category_label,
-      volumeText: r.volume_text,
-      volumeKg: r.volume_kg,
-      budgetText: r.budget_text,
-      description: r.description,
-      isActive: Boolean(r.is_active),
-      contacts: {
-        phone: r.contact_phone,
-        email: r.contact_email,
-      },
-      createdAt: r.created_at,
-      account: accountFieldsForBuyer(r.id, r.account_username || null),
-    }))
-  );
+  res.json(rows.map(mapAdminBuyerRow));
+});
+
+router.put("/api/admin/buyer-demands/:id", async (req, res) => {
+  try {
+    await updateDemandAdmin(req.params.id, req.body || {});
+    const row = await adminBuyerRowById(req.params.id);
+    if (!row) {
+      res.status(404).json({ error: "Запрос не найден" });
+      return;
+    }
+    res.json(row);
+  } catch (err) {
+    const code = err.message === "Запрос не найден" ? 404 : 400;
+    res.status(code).json({ error: err.message });
+  }
+});
+
+router.delete("/api/admin/buyer-demands/:id", async (req, res) => {
+  try {
+    await deleteDemandAdmin(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    const code = err.message === "Запрос не найден" ? 404 : 400;
+    res.status(code).json({ error: err.message });
+  }
 });
 
 router.get("/api/admin/meta", async (_req, res) => {
-  const [categories, regions] = await Promise.all([
+  const [categories, regions, cities] = await Promise.all([
     query("SELECT id, label FROM categories ORDER BY label"),
     query("SELECT name FROM regions ORDER BY name"),
+    listCities(),
   ]);
   res.json({
     categories,
     regions: regions.map((r) => r.name),
+    cities,
   });
 });
 

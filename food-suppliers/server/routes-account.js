@@ -3,12 +3,21 @@ import bcrypt from "bcryptjs";
 import { requireAuth, requireBuyer, requireSeller, sessionUser } from "./auth.js";
 import {
   activateDemandForUser,
+  closeDemandAfterAcceptance,
   createDemandForUser,
   deactivateDemandForUser,
   listDemandsForUser,
   updateDemandForUser,
 } from "./buyerDemandRepo.js";
-import { cancelOrder, createOrder, getOrderById, listOrdersForUser } from "./orderRepo.js";
+import {
+  cancelOrder,
+  createOrder,
+  getOrderById,
+  getOrderByIdForSupplier,
+  listOrdersForSupplier,
+  listOrdersForUser,
+  updateOrderStatusForSupplier,
+} from "./orderRepo.js";
 import { query, execute } from "./db.js";
 import {
   createProduct,
@@ -16,6 +25,8 @@ import {
   listProductsBySupplier,
   updateProduct,
 } from "./productRepo.js";
+import { addFavorite, listFavoriteIds, removeFavorite } from "./favoriteRepo.js";
+import { resolveProductPrice } from "./priceUtils.js";
 import {
   createUser,
   getUserById,
@@ -26,13 +37,55 @@ import {
 
 const router = Router();
 
+function parseLineItems(row) {
+  if (!row.line_items) return [];
+  try {
+    const raw = typeof row.line_items === "string" ? JSON.parse(row.line_items) : row.line_items;
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+
+async function buildProposalLines(supplierId, itemsInput) {
+  if (!Array.isArray(itemsInput) || !itemsInput.length) {
+    return { lines: [], total: 0 };
+  }
+  const products = await listProductsBySupplier(supplierId);
+  const byId = new Map(products.map((p) => [p.id, p]));
+  const lines = [];
+  let total = 0;
+  for (const raw of itemsInput) {
+    const productId = Number(raw.productId);
+    const quantity = Number(raw.quantity);
+    if (!productId || !Number.isFinite(quantity) || quantity <= 0) continue;
+    const p = byId.get(productId);
+    if (!p) continue;
+    const unitPrice = resolveProductPrice(p);
+    const lineTotal = Math.round(unitPrice * quantity * 100) / 100;
+    lines.push({
+      productId,
+      name: p.name,
+      unit: p.unit,
+      quantity,
+      unitPrice,
+      lineTotal,
+    });
+    total += lineTotal;
+  }
+  return { lines, total: Math.round(total * 100) / 100 };
+}
+
 function mapProposalRow(row) {
-  return {
+  const proposal = {
     id: row.id,
     buyerDemandId: row.buyer_demand_id,
     message: row.message,
     priceOffer: row.price_offer,
     volumeOffer: row.volume_offer,
+    lineItems: parseLineItems(row),
+    offerTotal: row.offer_total != null ? Number(row.offer_total) : null,
+    status: row.status || "pending",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     buyer: {
@@ -43,8 +96,22 @@ function mapProposalRow(row) {
       categoryLabel: row.category_label,
       volumeText: row.volume_text,
       budgetText: row.budget_text,
+      description: row.demand_description ?? null,
     },
   };
+  if (row.supplier_name != null || row.seller_supplier_id != null) {
+    proposal.seller = {
+      supplierId: row.seller_supplier_id,
+      supplierName: row.supplier_name,
+      city: row.supplier_city,
+      region: row.supplier_region,
+      contacts: {
+        phone: row.seller_phone ?? null,
+        email: row.seller_email ?? null,
+      },
+    };
+  }
+  return proposal;
 }
 
 async function sellerSupplierId(req) {
@@ -114,7 +181,7 @@ router.post("/api/auth/register", async (req, res) => {
       audience,
       organizationName: req.body?.organizationName,
       city: req.body?.city,
-      region: req.body?.region,
+      region: req.body?.city,
       contactPhone: req.body?.contactPhone,
       contactEmail: req.body?.contactEmail,
     });
@@ -186,33 +253,152 @@ router.get("/api/orders/:id", requireAuth, async (req, res) => {
   res.json(order);
 });
 
+router.get("/api/my/incoming-orders", requireAuth, requireSeller, async (req, res) => {
+  try {
+    const supplierId = await sellerSupplierId(req);
+    if (!supplierId) {
+      res.status(400).json({ error: "Аккаунт не привязан к карточке поставщика" });
+      return;
+    }
+    const orders = await listOrdersForSupplier(supplierId);
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Не удалось загрузить предложения" });
+  }
+});
+
+router.get("/api/my/incoming-orders/:id", requireAuth, requireSeller, async (req, res) => {
+  try {
+    const supplierId = await sellerSupplierId(req);
+    if (!supplierId) {
+      res.status(400).json({ error: "Аккаунт не привязан к карточке поставщика" });
+      return;
+    }
+    const order = await getOrderByIdForSupplier(Number(req.params.id), supplierId);
+    if (!order) {
+      res.status(404).json({ error: "Предложение не найдено" });
+      return;
+    }
+    res.json(order);
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Не удалось загрузить предложение" });
+  }
+});
+
+router.patch("/api/my/incoming-orders/:id/status", requireAuth, requireSeller, async (req, res) => {
+  try {
+    const supplierId = await sellerSupplierId(req);
+    if (!supplierId) {
+      res.status(400).json({ error: "Аккаунт не привязан к карточке поставщика" });
+      return;
+    }
+    const status = String(req.body?.status || "").trim();
+    const order = await updateOrderStatusForSupplier(
+      Number(req.params.id),
+      supplierId,
+      status
+    );
+    res.json({ order });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get("/api/favorites", requireAuth, async (req, res) => {
+  try {
+    const user = sessionUser(req);
+    const type = String(req.query?.type || "").trim();
+    const favorites = await listFavoriteIds(user.id, type);
+    res.json({ favorites });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post("/api/favorites", requireAuth, async (req, res) => {
+  try {
+    const user = sessionUser(req);
+    const targetType = String(req.body?.targetType || "").trim();
+    const targetId = req.body?.targetId;
+
+    if (targetType === "supplier" && user.audience !== "buyer" && user.role !== "admin") {
+      res.status(403).json({ error: "Избранные поставщики доступны покупателям" });
+      return;
+    }
+    if (targetType === "buyer_demand" && user.audience !== "seller") {
+      res.status(403).json({ error: "Избранные покупатели доступны поставщикам" });
+      return;
+    }
+
+    const item = await addFavorite(user.id, targetType, targetId);
+    res.status(201).json(item);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete("/api/favorites/:targetType/:targetId", requireAuth, async (req, res) => {
+  try {
+    const user = sessionUser(req);
+    const item = await removeFavorite(user.id, req.params.targetType, req.params.targetId);
+    res.json(item);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 router.get("/api/buyer-demands", requireAuth, requireSeller, async (req, res) => {
-  const { category, region, q, sort = "relevance" } = req.query;
+  const { category, city, region, org, q, sort = "relevance", ids } = req.query;
+  const filterCity = city || region || "";
+
+  const idList = ids
+    ? String(ids)
+        .split(",")
+        .map((x) => Number(x.trim()))
+        .filter((n) => Number.isFinite(n) && n > 0)
+    : [];
+  const fetchByIdsOnly = idList.length > 0 && !category && !filterCity && !org && !q;
 
   let sql = `
     SELECT b.*, c.label AS category_label
     FROM buyer_demands b
-    LEFT JOIN categories c ON c.id = b.category_id
-    WHERE b.is_active = 1`;
+    LEFT JOIN categories c ON c.id = b.category_id`;
   const params = [];
+
+  if (fetchByIdsOnly) {
+    sql += ` WHERE b.id IN (${idList.map(() => "?").join(",")})`;
+    params.push(...idList);
+  } else {
+    sql += " WHERE b.is_active = 1";
+    if (idList.length) {
+      sql += ` AND b.id IN (${idList.map(() => "?").join(",")})`;
+      params.push(...idList);
+    }
+  }
 
   if (category) {
     sql += " AND b.category_id = ?";
     params.push(category);
   }
 
-  if (region) {
-    sql += " AND (b.region = ? OR b.city = ?)";
-    params.push(region, region);
+  if (filterCity) {
+    sql += " AND b.city = ?";
+    params.push(filterCity);
+  }
+
+  if (org) {
+    const orgLike = `%${String(org).trim().toLowerCase()}%`;
+    sql += " AND LOWER(b.company_name) LIKE ?";
+    params.push(orgLike);
   }
 
   if (q) {
     const like = `%${String(q).trim().toLowerCase()}%`;
     sql += ` AND (
-      LOWER(b.company_name) LIKE ? OR LOWER(b.description) LIKE ?
+      LOWER(b.description) LIKE ?
       OR LOWER(b.business_type) LIKE ? OR LOWER(b.city) LIKE ?
     )`;
-    params.push(like, like, like, like);
+    params.push(like, like, like);
   }
 
   if (sort === "volume") {
@@ -237,6 +423,7 @@ router.get("/api/buyer-demands", requireAuth, requireSeller, async (req, res) =>
       volumeKg: r.volume_kg,
       budgetText: r.budget_text,
       description: r.description,
+      isActive: Boolean(r.is_active),
       contacts: {
         phone: r.contact_phone,
         email: r.contact_email,
@@ -263,8 +450,9 @@ router.post("/api/proposals", requireAuth, requireSeller, async (req, res) => {
   const user = sessionUser(req);
   const buyerDemandId = Number(req.body?.buyerDemandId);
   const message = String(req.body?.message || "").trim();
-  const priceOffer = String(req.body?.priceOffer || "").trim() || null;
-  const volumeOffer = String(req.body?.volumeOffer || "").trim() || null;
+  let priceOffer = String(req.body?.priceOffer || "").trim() || null;
+  let volumeOffer = String(req.body?.volumeOffer || "").trim() || null;
+  const itemsInput = req.body?.items;
 
   if (!buyerDemandId) {
     res.status(400).json({ error: "Укажите заявку покупателя" });
@@ -273,6 +461,23 @@ router.post("/api/proposals", requireAuth, requireSeller, async (req, res) => {
   if (!message) {
     res.status(400).json({ error: "Опишите ваше предложение" });
     return;
+  }
+
+  const supplierId = await sellerSupplierId(req);
+  if (!supplierId) {
+    res.status(400).json({ error: "Аккаунт не привязан к карточке поставщика" });
+    return;
+  }
+
+  const { lines, total } = await buildProposalLines(supplierId, itemsInput);
+  const lineItemsJson = lines.length ? JSON.stringify(lines) : null;
+  const offerTotal = lines.length ? total : null;
+
+  if (lines.length) {
+    priceOffer = priceOffer || `Итого ${total.toLocaleString("ru-RU")} ₽`;
+    if (!volumeOffer) {
+      volumeOffer = lines.map((l) => `${l.quantity} ${l.unit}`).join(", ");
+    }
   }
 
   const demands = await query(
@@ -285,15 +490,25 @@ router.post("/api/proposals", requireAuth, requireSeller, async (req, res) => {
   }
 
   const existing = await query(
-    "SELECT id FROM supply_proposals WHERE seller_user_id = ? AND buyer_demand_id = ?",
+    "SELECT id, status FROM supply_proposals WHERE seller_user_id = ? AND buyer_demand_id = ?",
     [user.id, buyerDemandId]
   );
 
   if (existing.length) {
+    const currentStatus = existing[0].status || "pending";
+    if (currentStatus === "accepted") {
+      res.status(400).json({ error: "Покупатель принял предложение — изменить ответ нельзя" });
+      return;
+    }
+    if (currentStatus === "rejected") {
+      res.status(400).json({ error: "Покупатель отклонил предложение — изменить ответ нельзя" });
+      return;
+    }
+
     await query(
-      `UPDATE supply_proposals SET message = ?, price_offer = ?, volume_offer = ?, updated_at = CURRENT_TIMESTAMP
+      `UPDATE supply_proposals SET message = ?, price_offer = ?, volume_offer = ?, line_items = ?, offer_total = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [message, priceOffer, volumeOffer, existing[0].id]
+      [message, priceOffer, volumeOffer, lineItemsJson, offerTotal, existing[0].id]
     );
     const rows = await query(
       `SELECT p.*, b.company_name, b.city, b.region, b.business_type, b.volume_text, b.budget_text, c.label AS category_label
@@ -308,9 +523,9 @@ router.post("/api/proposals", requireAuth, requireSeller, async (req, res) => {
   }
 
   const result = await execute(
-    `INSERT INTO supply_proposals (seller_user_id, buyer_demand_id, message, price_offer, volume_offer)
-     VALUES (?, ?, ?, ?, ?)`,
-    [user.id, buyerDemandId, message, priceOffer, volumeOffer]
+    `INSERT INTO supply_proposals (seller_user_id, buyer_demand_id, message, price_offer, volume_offer, line_items, offer_total)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [user.id, buyerDemandId, message, priceOffer, volumeOffer, lineItemsJson, offerTotal]
   );
 
   const rows = await query(
@@ -322,6 +537,95 @@ router.post("/api/proposals", requireAuth, requireSeller, async (req, res) => {
     [result.insertId]
   );
   res.status(201).json({ proposal: mapProposalRow(rows[0]), updated: false });
+});
+
+router.get("/api/my/incoming-proposals", requireAuth, requireBuyer, async (req, res) => {
+  try {
+    const user = sessionUser(req);
+    const rows = await query(
+      `SELECT p.*,
+        b.company_name, b.city, b.region, b.business_type, b.volume_text, b.budget_text,
+        b.description AS demand_description, c.label AS category_label,
+        s.id AS seller_supplier_id, s.name AS supplier_name, s.city AS supplier_city,
+        (SELECT GROUP_CONCAT(DISTINCT r.name ORDER BY r.name SEPARATOR ', ')
+         FROM supplier_regions sr
+         JOIN regions r ON r.id = sr.region_id
+         WHERE sr.supplier_id = s.id) AS supplier_region,
+        s.phone AS seller_phone, s.email AS seller_email
+       FROM supply_proposals p
+       JOIN buyer_demands b ON b.id = p.buyer_demand_id
+       JOIN users u ON u.id = p.seller_user_id
+       LEFT JOIN suppliers s ON s.id = u.supplier_id
+       LEFT JOIN categories c ON c.id = b.category_id
+       WHERE b.user_id = ?
+       ORDER BY p.updated_at DESC`,
+      [user.id]
+    );
+    res.json(rows.map(mapProposalRow));
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Не удалось загрузить ответы поставщиков" });
+  }
+});
+
+const INCOMING_PROPOSAL_SELECT = `SELECT p.*,
+  b.company_name, b.city, b.region, b.business_type, b.volume_text, b.budget_text,
+  b.description AS demand_description, c.label AS category_label,
+  s.id AS seller_supplier_id, s.name AS supplier_name, s.city AS supplier_city,
+  (SELECT GROUP_CONCAT(DISTINCT r.name ORDER BY r.name SEPARATOR ', ')
+   FROM supplier_regions sr
+   JOIN regions r ON r.id = sr.region_id
+   WHERE sr.supplier_id = s.id) AS supplier_region,
+  s.phone AS seller_phone, s.email AS seller_email`;
+
+router.patch("/api/my/incoming-proposals/:id/status", requireAuth, requireBuyer, async (req, res) => {
+  try {
+    const user = sessionUser(req);
+    const proposalId = Number(req.params.id);
+    const status = String(req.body?.status || "").trim();
+
+    if (!["accepted", "rejected"].includes(status)) {
+      res.status(400).json({ error: "Укажите статус: accepted или rejected" });
+      return;
+    }
+
+    const owned = await query(
+      `SELECT p.id, p.status, p.buyer_demand_id FROM supply_proposals p
+       JOIN buyer_demands b ON b.id = p.buyer_demand_id
+       WHERE p.id = ? AND b.user_id = ?`,
+      [proposalId, user.id]
+    );
+    if (!owned.length) {
+      res.status(404).json({ error: "Предложение не найдено" });
+      return;
+    }
+    if (owned[0].status !== "pending") {
+      res.status(400).json({ error: "Статус этого предложения уже изменён" });
+      return;
+    }
+
+    await query(
+      `UPDATE supply_proposals SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [status, proposalId]
+    );
+
+    if (status === "accepted") {
+      await closeDemandAfterAcceptance(owned[0].buyer_demand_id);
+    }
+
+    const rows = await query(
+      `${INCOMING_PROPOSAL_SELECT}
+       FROM supply_proposals p
+       JOIN buyer_demands b ON b.id = p.buyer_demand_id
+       JOIN users u ON u.id = p.seller_user_id
+       LEFT JOIN suppliers s ON s.id = u.supplier_id
+       LEFT JOIN categories c ON c.id = b.category_id
+       WHERE p.id = ?`,
+      [proposalId]
+    );
+    res.json({ proposal: mapProposalRow(rows[0]) });
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Не удалось обновить статус" });
+  }
 });
 
 router.get("/api/proposals/by-demand/:demandId", requireAuth, requireSeller, async (req, res) => {

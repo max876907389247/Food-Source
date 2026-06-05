@@ -1,18 +1,44 @@
 import { api } from "./auth.js";
+import {
+  formatProductMinOrder,
+  formatProductPrice,
+  parseProductMinOrderInput,
+} from "./proposals-shared.js";
 import { escapeHtml } from "./ui.js";
+
+const PRODUCT_UNITS = ["кг", "г", "л", "мл", "шт.", "упак.", "кор.", "т"];
+
+function unitOptionsHtml(product) {
+  const current = product?.unit || "кг";
+  const units = [...new Set([...PRODUCT_UNITS, current])];
+  return units
+    .map(
+      (u) =>
+        `<option value="${escapeHtml(u)}"${u === current ? " selected" : ""}>${escapeHtml(u)}</option>`
+    )
+    .join("");
+}
+
+function minOrderInputValue(product) {
+  if (!product?.minOrder) return "";
+  const rub = parseProductMinOrderInput(product.minOrder);
+  return rub != null ? rub : "";
+}
 
 function renderProductRow(p, categories) {
   const cat = categories.find((c) => c.id === p.categoryId);
+  const price = formatProductPrice(p.pricePerUnit, p.unit, p.priceHint);
+  const minOrder = formatProductMinOrder(p.minOrder);
   return `
     <article class="product-manage-card" data-product-id="${p.id}">
       <div class="product-manage-card__head">
         <h3>${escapeHtml(p.name)}</h3>
         <span class="badge badge--muted">${cat ? escapeHtml(cat.label) : "Без категории"}</span>
       </div>
-      <p class="product-manage-card__meta">
-        ${p.pricePerUnit != null ? `${p.pricePerUnit} ₽/${escapeHtml(p.unit)}` : escapeHtml(p.priceHint || "—")}
-        ${p.minOrder ? ` · мин. ${escapeHtml(p.minOrder)}` : ""}
-      </p>
+      <dl class="product-manage-card__facts">
+        <div><dt>Цена</dt><dd>${escapeHtml(price)}</dd></div>
+        <div><dt>Мин. заказ</dt><dd>${escapeHtml(minOrder)}</dd></div>
+      </dl>
       ${p.description ? `<p class="product-manage-card__desc">${escapeHtml(p.description)}</p>` : ""}
       <div class="product-manage-card__actions">
         <button type="button" class="btn btn--ghost btn--sm" data-edit-product="${p.id}">Изменить</button>
@@ -28,6 +54,10 @@ function productFormHtml(categories, product = null) {
         `<option value="${escapeHtml(c.id)}"${product?.categoryId === c.id ? " selected" : ""}>${escapeHtml(c.label)}</option>`
     )
     .join("");
+  const unit = product?.unit || "кг";
+  const pricePreview =
+    product?.pricePerUnit != null ? formatProductPrice(product.pricePerUnit, unit) : "";
+  const minPreview = product?.minOrder ? formatProductMinOrder(product.minOrder) : "";
   return `
     <h3 class="manage-form__title">${product ? "Редактирование товара" : "Новый товар"}</h3>
     <p class="manage-form__hint muted">Позиция появится в блоке «Продукция» на карточке поставщика в каталоге.</p>
@@ -47,18 +77,16 @@ function productFormHtml(categories, product = null) {
       <label class="field">
         <span class="field__label">Цена за единицу (₽)</span>
         <input name="pricePerUnit" type="number" min="0" step="0.01" value="${product?.pricePerUnit ?? ""}">
+        <span class="field__hint" id="product-price-preview">${pricePreview ? `Будет отображаться: ${escapeHtml(pricePreview)}` : "Формат: 42₽/кг"}</span>
       </label>
       <label class="field">
-        <span class="field__label">Подсказка по цене</span>
-        <input name="priceHint" value="${product?.priceHint ? escapeHtml(product.priceHint) : ""}" placeholder="от 42 ₽/кг">
+        <span class="field__label">Единица измерения</span>
+        <select name="unit">${unitOptionsHtml(product)}</select>
       </label>
       <label class="field">
-        <span class="field__label">Единица</span>
-        <input name="unit" value="${product?.unit ? escapeHtml(product.unit) : "кг"}">
-      </label>
-      <label class="field">
-        <span class="field__label">Мин. заказ</span>
-        <input name="minOrder" value="${product?.minOrder ? escapeHtml(product.minOrder) : ""}">
+        <span class="field__label">Мин. сумма заказа (₽)</span>
+        <input name="minOrderRub" type="number" min="0" step="1" value="${product ? minOrderInputValue(product) : ""}" placeholder="5000">
+        <span class="field__hint" id="product-min-preview">${minPreview ? `Будет отображаться: ${escapeHtml(minPreview)}` : "Формат: мин. от 5 000 ₽"}</span>
       </label>
       <label class="field field--wide">
         <span class="field__label">Описание</span>
@@ -70,6 +98,39 @@ function productFormHtml(categories, product = null) {
         ${product ? '<button type="button" class="btn btn--ghost" data-cancel-form>Отмена</button>' : ""}
       </div>
     </form>`;
+}
+
+function bindProductFormPreviews(formWrap) {
+  const form = formWrap.querySelector("#product-form");
+  if (!form) return;
+  const priceInput = form.querySelector('[name="pricePerUnit"]');
+  const unitSelect = form.querySelector('[name="unit"]');
+  const minInput = form.querySelector('[name="minOrderRub"]');
+  const pricePreview = formWrap.querySelector("#product-price-preview");
+  const minPreview = formWrap.querySelector("#product-min-preview");
+
+  const updatePreviews = () => {
+    const price = priceInput?.value;
+    const unit = unitSelect?.value || "кг";
+    if (pricePreview) {
+      const formatted = price !== "" && price != null ? formatProductPrice(Number(price), unit) : null;
+      pricePreview.textContent = formatted
+        ? `Будет отображаться: ${formatted}`
+        : "Формат: 42₽/кг";
+    }
+    if (minPreview) {
+      const minRub = minInput?.value;
+      const formatted =
+        minRub !== "" && minRub != null ? formatProductMinOrder(minRub) : null;
+      minPreview.textContent = formatted
+        ? `Будет отображаться: ${formatted}`
+        : "Формат: мин. от 5 000 ₽";
+    }
+  };
+
+  priceInput?.addEventListener("input", updatePreviews);
+  unitSelect?.addEventListener("change", updatePreviews);
+  minInput?.addEventListener("input", updatePreviews);
 }
 
 let controller = null;
@@ -117,18 +178,34 @@ export function initMyProducts({ categories }) {
   function bindForm() {
     const form = formWrap.querySelector("#product-form");
     if (!form) return;
+    bindProductFormPreviews(formWrap);
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const err = formWrap.querySelector("#product-form-error");
       err.hidden = true;
       const fd = new FormData(form);
+      const priceRaw = fd.get("pricePerUnit");
+      const minOrderRaw = fd.get("minOrderRub");
+      const pricePerUnit =
+        priceRaw !== "" && priceRaw != null ? Number(priceRaw) : null;
+      const minOrderRub =
+        minOrderRaw !== "" && minOrderRaw != null ? Number(minOrderRaw) : null;
+      if (pricePerUnit != null && Number.isNaN(pricePerUnit)) {
+        err.textContent = "Некорректная цена";
+        err.hidden = false;
+        return;
+      }
+      if (minOrderRub != null && Number.isNaN(minOrderRub)) {
+        err.textContent = "Некорректная минимальная цена заказа";
+        err.hidden = false;
+        return;
+      }
       const payload = {
         name: fd.get("name"),
         categoryId: fd.get("categoryId") || null,
-        pricePerUnit: fd.get("pricePerUnit") || null,
-        priceHint: fd.get("priceHint"),
+        pricePerUnit,
         unit: fd.get("unit"),
-        minOrder: fd.get("minOrder"),
+        minOrderRub,
         description: fd.get("description"),
       };
       try {
